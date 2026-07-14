@@ -35,8 +35,9 @@ export function AddAccountModal(props: AddAccountModalProps) {
           />
         </label>
         <div className="modal-copy">
-          <p>현재 Codex에 로그인된 계정을 바로 저장합니다.</p>
-          <p>다른 계정도 Codex에서 직접 로그인한 상태라면 같은 방식으로 추가할 수 있습니다.</p>
+          <p>현재 ChatGPT/Codex에 로그인된 계정의 최신 인증만 암호화해 저장합니다.</p>
+          <p>이미 등록된 계정이면 중복 오류 없이 최신 토큰과 입력한 이름으로 갱신합니다.</p>
+          <p>채팅, 프로젝트, 플러그인, 설정 파일은 복사하거나 변경하지 않습니다.</p>
         </div>
         <div className="modal-actions">
           <button
@@ -52,7 +53,7 @@ export function AddAccountModal(props: AddAccountModalProps) {
               }
             }}
           >
-            현재 Codex 인증 저장
+            현재 계정 저장 또는 갱신
           </button>
         </div>
       </section>

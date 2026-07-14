@@ -66,21 +66,34 @@ function hasNonEmptyToken(value: string | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function parseRawAuthBundle(raw: string): RawAuthBundle {
+  if (!raw.trim()) {
+    throw new Error('Codex auth.json이 비어 있습니다. Codex에서 다시 로그인한 뒤 시도해 주세요.');
+  }
+
+  try {
+    return JSON.parse(raw) as RawAuthBundle;
+  } catch (error) {
+    throw new Error(
+      `Codex auth.json이 손상되었습니다. 계정 전환기가 파일을 변경하지 않았습니다. (${error instanceof Error ? error.message : String(error)})`
+    );
+  }
+}
+
 export function parseAuthBundle(raw: string): {
   accountId: string;
   accessToken: string;
   email: string | null;
   planType: PlanType;
 } {
-  const bundle = JSON.parse(raw) as RawAuthBundle;
+  const bundle = parseRawAuthBundle(raw);
   const accessToken = bundle.tokens?.access_token;
-  const accountId = bundle.tokens?.account_id;
+  const payload = accessToken ? decodeJwtPayload(accessToken) : null;
+  const accountId = bundle.tokens?.account_id ?? getJwtAccountId(payload);
 
   if (!accessToken || !accountId) {
     throw new Error('Current auth bundle is missing required token fields.');
   }
-
-  const payload = decodeJwtPayload(accessToken);
 
   return {
     accountId,
@@ -91,7 +104,7 @@ export function parseAuthBundle(raw: string): {
 }
 
 export function getAuthBundleExpiry(raw: string): string | null {
-  const bundle = JSON.parse(raw) as RawAuthBundle;
+  const bundle = parseRawAuthBundle(raw);
   const accessToken = bundle.tokens?.access_token;
 
   if (!accessToken) {
@@ -114,13 +127,10 @@ export function getAuthBundleSwitchability(raw: string): {
   canSwitch: boolean;
   reason: string | null;
 } {
-  const bundle = JSON.parse(raw) as RawAuthBundle;
+  const bundle = parseRawAuthBundle(raw);
   const hasRefreshToken = hasNonEmptyToken(bundle.tokens?.refresh_token);
   const hasIdToken = hasNonEmptyToken(bundle.tokens?.id_token);
-  const hasLastRefresh =
-    typeof bundle.last_refresh === 'string' && bundle.last_refresh.trim().length > 0;
-
-  if (hasRefreshToken && hasIdToken && hasLastRefresh) {
+  if (hasRefreshToken && hasIdToken) {
     return {
       canSwitch: true,
       reason: null

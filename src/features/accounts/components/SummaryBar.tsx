@@ -32,7 +32,7 @@ export function SummaryBar(props: SummaryBarProps) {
             전체 갱신
           </button>
           <button className="ghost-button" onClick={props.onTerminateCodex}>
-            코덱스 종료
+            ChatGPT 종료
           </button>
           <button className="primary-button" onClick={props.onAddAccount}>
             계정 추가

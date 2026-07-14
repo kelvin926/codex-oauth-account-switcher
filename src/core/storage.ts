@@ -1,6 +1,27 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readJsonWithBackup, writeJsonAtomic } from './atomicFile.js';
 import type { AccountRecord } from './types.js';
+
+function isAccountRecord(value: unknown): value is AccountRecord {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const account = value as Partial<AccountRecord>;
+  return (
+    typeof account.id === 'string' &&
+    typeof account.label === 'string' &&
+    typeof account.bundlePath === 'string' &&
+    typeof account.status === 'string' &&
+    typeof account.planType === 'string' &&
+    typeof account.createdAt === 'string' &&
+    typeof account.updatedAt === 'string'
+  );
+}
+
+function isAccountCatalog(value: unknown): value is AccountRecord[] {
+  return Array.isArray(value) && value.every(isAccountRecord);
+}
 
 export class CatalogStore {
   private readonly catalogPath: string;
@@ -10,21 +31,11 @@ export class CatalogStore {
   }
 
   async load(): Promise<AccountRecord[]> {
-    try {
-      const text = await readFile(this.catalogPath, 'utf8');
-      return JSON.parse(text) as AccountRecord[];
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') {
-        return [];
-      }
-
-      throw error;
-    }
+    const { value } = await readJsonWithBackup(this.catalogPath, [], isAccountCatalog);
+    return value;
   }
 
   async save(accounts: AccountRecord[]): Promise<void> {
-    await mkdir(this.rootDir, { recursive: true });
-    await writeFile(this.catalogPath, JSON.stringify(accounts, null, 2), 'utf8');
+    await writeJsonAtomic(this.catalogPath, accounts);
   }
 }

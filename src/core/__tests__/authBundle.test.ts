@@ -103,4 +103,22 @@ describe('auth bundle switchability', () => {
       reason: null
     });
   });
+
+  it('accepts a full rotating-token bundle even before last_refresh is written', () => {
+    const bundle = JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: {
+        access_token: 'access',
+        refresh_token: 'refresh',
+        id_token: 'id',
+        account_id: 'account-2'
+      }
+    });
+
+    expect(getAuthBundleSwitchability(bundle).canSwitch).toBe(true);
+  });
+
+  it('returns an actionable error for an empty auth file', () => {
+    expect(() => parseAuthBundle('')).toThrow('auth.json이 비어 있습니다');
+  });
 });

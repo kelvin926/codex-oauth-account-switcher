@@ -1,11 +1,13 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import type { AuthAdapter } from '../types.js';
+import { mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { writeFileAtomic } from '../atomicFile.js';
+import type { AuthAdapter, SecretBox } from '../types.js';
 
 export class AuthFileAdapter implements AuthAdapter {
   constructor(
     private readonly authPath: string,
-    private readonly backupPath: string
+    private readonly backupRoot: string,
+    private readonly backupSecretBox: SecretBox | null = null
   ) {}
 
   async readCurrentAuth(): Promise<string> {
@@ -13,18 +15,25 @@ export class AuthFileAdapter implements AuthAdapter {
   }
 
   async backupCurrentAuth(): Promise<string> {
-    await mkdir(dirname(this.backupPath), { recursive: true });
-    await copyFile(this.authPath, this.backupPath);
-    return this.backupPath;
+    await mkdir(this.backupRoot, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const extension = this.backupSecretBox ? 'bundle' : 'json';
+    const backupPath = join(this.backupRoot, `auth-${stamp}-${process.pid}.${extension}`);
+    const currentAuth = await readFile(this.authPath, 'utf8');
+    const backup = this.backupSecretBox
+      ? this.backupSecretBox.encrypt(currentAuth)
+      : currentAuth;
+    await writeFileAtomic(backupPath, backup);
+    return backupPath;
   }
 
   async writeBundle(bundle: string): Promise<void> {
-    await this.backupCurrentAuth();
-    await writeFile(this.authPath, bundle, 'utf8');
+    await writeFileAtomic(this.authPath, `${bundle.trim()}\n`);
   }
 
   async restoreBackup(backupPath: string): Promise<void> {
-    const backup = await readFile(backupPath, 'utf8');
-    await writeFile(this.authPath, backup, 'utf8');
+    const stored = await readFile(backupPath, 'utf8');
+    const backup = this.backupSecretBox ? this.backupSecretBox.decrypt(stored) : stored;
+    await writeFileAtomic(this.authPath, backup);
   }
 }

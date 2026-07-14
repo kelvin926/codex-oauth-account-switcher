@@ -21,7 +21,7 @@ type AccountCardProps = {
 export function AccountCard(props: AccountCardProps) {
   const { account } = props;
   const badge = getAccountBadge(account, props.state, props.recommendedId);
-  const switchDisabled = account.status === 'expired' || account.canSwitch === false;
+  const switchDisabled = account.canSwitch === false;
 
   return (
     <article className="account-card">

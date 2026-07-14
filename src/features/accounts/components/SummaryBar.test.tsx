@@ -23,7 +23,7 @@ describe('SummaryBar', () => {
     ).toEqual([
       '추천으로 전환',
       '전체 갱신',
-      '코덱스 종료',
+      'ChatGPT 종료',
       '계정 추가',
     ]);
   });

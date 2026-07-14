@@ -1,11 +1,11 @@
 {
   "name": "oauth-account-switcher",
-  "version": "0.1.5",
-  "description": "Windows desktop app that helps you switch Codex accounts before reopening the app.",
+  "version": "0.2.0",
+  "description": "Safe Windows account switcher for the ChatGPT-integrated Codex app.",
   "private": false,
   "type": "module",
   "main": "dist-electron/electron/main.js",
-  "author": "Codex Packaging Setup",
+  "author": "ventianima-lab",
   "scripts": {
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.node.json",

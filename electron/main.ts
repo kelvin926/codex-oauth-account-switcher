@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -16,9 +16,16 @@ import {
   parseAuthBundle
 } from '../src/core/authBundle.js';
 import {
+  buildCodexLaunchScript,
+  buildCodexRuntimeScript,
   buildCodexTerminationScript,
   toCodexTerminationErrorMessage
 } from '../src/core/codexRestart.js';
+import {
+  checkpointCurrentAccount,
+  mergeDiscoveredAccounts
+} from '../src/core/accountSession.js';
+import { readJsonWithBackup, writeFileAtomic, writeJsonAtomic } from '../src/core/atomicFile.js';
 import { resolvePreloadPath } from '../src/core/electronPaths.js';
 import { chooseRecommendedAccount } from '../src/core/recommendation.js';
 import { CatalogStore } from '../src/core/storage.js';
@@ -38,18 +45,21 @@ const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 const demoScenario = process.env.OAUTH_SWITCHER_DEMO_SCENARIO ?? null;
 const screenshotOutputPath = process.env.OAUTH_SWITCHER_SCREENSHOT_FILE ?? null;
 const autoQuitAfterCapture = process.env.OAUTH_SWITCHER_AUTOCLOSE_AFTER_CAPTURE === 'true';
-const dataRoot = path.join(homedir(), '.oauth-account-switcher');
+const dataRoot = process.env.OAUTH_SWITCHER_DATA_ROOT ?? path.join(homedir(), '.oauth-account-switcher');
 const bundleRoot = path.join(dataRoot, 'bundles');
 const registrationRoot = path.join(dataRoot, 'registration');
 const registrationStatePath = path.join(registrationRoot, 'pending-codex-login.json');
 const registrationOriginalAuthPath = path.join(registrationRoot, 'original-auth.json');
 const appStatePath = path.join(dataRoot, 'app-state.json');
-const codexAuthPath = path.join(homedir(), '.codex', 'auth.json');
-const backupAuthPath = path.join(dataRoot, 'backups', 'auth.json');
+const codexHome = process.env.CODEX_HOME ?? path.join(homedir(), '.codex');
+const codexAuthPath = path.join(codexHome, 'auth.json');
+const backupAuthRoot = path.join(dataRoot, 'backups', 'auth');
 const catalogStore = new CatalogStore(dataRoot);
-const sessionVault = new SessionVault(bundleRoot, createAesSecretBox());
-const authAdapter = new AuthFileAdapter(codexAuthPath, backupAuthPath);
+const secretBox = createAesSecretBox();
+const sessionVault = new SessionVault(bundleRoot, secretBox);
+const authAdapter = new AuthFileAdapter(codexAuthPath, backupAuthRoot, secretBox);
 const execFileAsync = promisify(execFile);
+let operationQueue: Promise<void> = Promise.resolve();
 
 type PendingRegistrationSession = {
   mode: 'codex-login';
@@ -59,13 +69,30 @@ type PendingRegistrationSession = {
 
 type CodexWindowRuntime = {
   isOpen: boolean;
+  processCount: number;
   latestStartTime: string | null;
 };
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPendingRegistrationSession(value: unknown): value is PendingRegistrationSession {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+
+  return (
+    value.mode === 'codex-login' &&
+    typeof value.startedAt === 'string' &&
+    (typeof value.originalAuthPath === 'string' || value.originalAuthPath === null)
+  );
+}
 
 app.disableHardwareAcceleration();
 
 function logLine(...parts: unknown[]) {
-  const logDir = path.join(process.cwd(), '.debug');
+  const logDir = path.join(dataRoot, 'logs');
   mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, 'main.log');
   appendFileSync(logPath, `${new Date().toISOString()} ${parts.map((part) => String(part)).join(' ')}\n`);
@@ -103,17 +130,13 @@ function toPublicRegistrationState(
 }
 
 async function loadRegistrationSession(): Promise<PendingRegistrationSession | null> {
-  try {
-    const raw = await readFile(registrationStatePath, 'utf8');
-    return JSON.parse(raw) as PendingRegistrationSession;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') {
-      return null;
-    }
-
-    throw error;
-  }
+  const result = await readJsonWithBackup<PendingRegistrationSession | null>(
+    registrationStatePath,
+    null,
+    (value): value is PendingRegistrationSession | null =>
+      value === null || isPendingRegistrationSession(value)
+  );
+  return result.value;
 }
 
 async function clearRegistrationSession(): Promise<void> {
@@ -124,42 +147,43 @@ async function clearRegistrationSession(): Promise<void> {
 async function restoreOriginalAuth(session: PendingRegistrationSession): Promise<void> {
   if (session.originalAuthPath) {
     const originalAuth = await readFile(session.originalAuthPath, 'utf8');
-    await mkdir(path.dirname(codexAuthPath), { recursive: true });
-    await writeFile(codexAuthPath, originalAuth, 'utf8');
+    await writeFileAtomic(codexAuthPath, originalAuth);
   } else {
     await rm(codexAuthPath, { force: true });
   }
 }
 
 async function loadState(): Promise<DesktopState> {
-  try {
-    const raw = readFileSync(appStatePath, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<DesktopState>;
-    return {
-      activeAccountId: parsed.activeAccountId ?? null,
-      pendingVerificationAccountId: parsed.pendingVerificationAccountId ?? null,
-      pendingVerificationSawStop: parsed.pendingVerificationSawStop ?? false,
-      lastSwitchAt: parsed.lastSwitchAt ?? null,
-      registration: parsed.registration ?? null
-    };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') {
-      return {
-        activeAccountId: null,
-        pendingVerificationAccountId: null,
-        pendingVerificationSawStop: false,
-        lastSwitchAt: null,
-        registration: null
-      };
-    }
+  const { value } = await readJsonWithBackup<Record<string, unknown>>(
+    appStatePath,
+    {},
+    isJsonObject
+  );
+  return {
+    activeAccountId: typeof value.activeAccountId === 'string' ? value.activeAccountId : null,
+    pendingVerificationAccountId:
+      typeof value.pendingVerificationAccountId === 'string'
+        ? value.pendingVerificationAccountId
+        : null,
+    pendingVerificationSawStop: value.pendingVerificationSawStop === true,
+    lastSwitchAt: typeof value.lastSwitchAt === 'string' ? value.lastSwitchAt : null,
+    registration: isPendingRegistrationSession(value.registration)
+      ? toPublicRegistrationState(value.registration)
+      : null
+  };
+}
 
-    throw error;
-  }
+function serializeOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = operationQueue.then(operation, operation);
+  operationQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }
 
 async function saveState(state: DesktopState): Promise<void> {
-  await writeFile(appStatePath, JSON.stringify(state, null, 2), 'utf8');
+  await writeJsonAtomic(appStatePath, state);
 }
 
 async function updateRegistrationState(
@@ -174,7 +198,12 @@ async function updateRegistrationState(
 
 async function getAccounts(): Promise<AccountRecord[]> {
   await ensureDataRoot();
-  return catalogStore.load();
+  const accounts = await catalogStore.load();
+  const merged = mergeDiscoveredAccounts(accounts, await sessionVault.discover());
+  if (merged.length !== accounts.length) {
+    await catalogStore.save(merged);
+  }
+  return merged;
 }
 
 async function saveAccounts(accounts: AccountRecord[]): Promise<void> {
@@ -186,22 +215,32 @@ async function getCodexWindowRuntime(): Promise<CodexWindowRuntime> {
   const { stdout } = await execFileAsync('powershell.exe', [
     '-NoProfile',
     '-Command',
-    [
-      "$windows = @(Get-Process Codex -ErrorAction SilentlyContinue | Where-Object {",
-      "  $_.MainWindowHandle -ne 0 -and",
-      "  $_.MainWindowTitle -and",
-      "  $_.MainWindowTitle.Trim().Length -gt 0",
-      "});",
-      "if ($windows.Count -gt 0) {",
-      "  $latest = $windows | Sort-Object StartTime -Descending | Select-Object -First 1;",
-      "  @{ isOpen = $true; latestStartTime = $latest.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress",
-      "} else {",
-      "  @{ isOpen = $false; latestStartTime = $null } | ConvertTo-Json -Compress",
-      "}"
-    ].join(' ')
+    buildCodexRuntimeScript()
   ]);
 
   return JSON.parse(stdout.trim()) as CodexWindowRuntime;
+}
+
+async function stopCodexStack(): Promise<void> {
+  try {
+    await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      buildCodexTerminationScript()
+    ]);
+  } catch (error) {
+    throw new Error(toCodexTerminationErrorMessage(error));
+  }
+}
+
+async function launchCodex(): Promise<void> {
+  await execFileAsync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    buildCodexLaunchScript()
+  ]);
 }
 
 async function clearStaleRegistrationSession(): Promise<void> {
@@ -244,11 +283,8 @@ async function synchronizeStateWithRuntime(state: DesktopState): Promise<Desktop
       nextState.pendingVerificationAccountId = null;
       nextState.pendingVerificationSawStop = false;
     }
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') {
-      nextState.activeAccountId = null;
-    }
+  } catch {
+    nextState.activeAccountId = null;
   }
 
   if (!nextState.pendingVerificationAccountId) {
@@ -263,28 +299,38 @@ async function buildDashboard(): Promise<DashboardPayload> {
   const accounts = await getAccounts();
   const normalizedAccounts = await Promise.all(
     accounts.map(async (account) => {
-      const bundle = await sessionVault.load(account.bundlePath);
-      const switchability = getAuthBundleSwitchability(bundle);
-      const authSource =
-        account.authSource ??
-        (switchability.canSwitch ? 'codex-auth-file' : 'session-import');
-      if (isAuthBundleExpired(bundle)) {
+      try {
+        const bundle = await sessionVault.load(account.bundlePath);
+        const switchability = getAuthBundleSwitchability(bundle);
+        const authSource =
+          account.authSource ??
+          (switchability.canSwitch ? 'codex-auth-file' : 'session-import');
+        if (isAuthBundleExpired(bundle)) {
+          return {
+            ...account,
+            authSource,
+            canSwitch: switchability.canSwitch,
+            switchBlockedReason: switchability.reason,
+            status: switchability.canSwitch ? ('needs-refresh' as const) : ('expired' as const)
+          };
+        }
+
         return {
           ...account,
           authSource,
           canSwitch: switchability.canSwitch,
           switchBlockedReason: switchability.reason,
-          status: 'expired' as const
+          status: account.status === 'expired' ? ('needs-refresh' as const) : account.status
+        };
+      } catch {
+        return {
+          ...account,
+          canSwitch: false,
+          switchBlockedReason:
+            '저장된 인증 번들을 읽을 수 없습니다. 현재 로그인된 계정이라면 계정 추가로 다시 저장해 주세요.',
+          status: 'error' as const
         };
       }
-
-      return {
-        ...account,
-        authSource,
-        canSwitch: switchability.canSwitch,
-        switchBlockedReason: switchability.reason,
-        status: account.status === 'expired' ? ('needs-refresh' as const) : account.status
-      };
     })
   );
   await saveAccounts(normalizedAccounts);
@@ -391,12 +437,6 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
   const parsed = parseAuthBundle(rawAuth);
   const existingAccount = accounts.find((account) => account.id === parsed.accountId);
 
-  if (existingAccount) {
-    throw new Error(
-      `이미 등록된 계정입니다: ${existingAccount.label}. 같은 계정은 다시 추가할 수 없습니다.`
-    );
-  }
-
   let usageResult:
     | Awaited<ReturnType<typeof fetchUsageFromAccessToken>>
     | null = null;
@@ -411,7 +451,7 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
   const nextAccount: AccountRecord = {
     id: parsed.accountId,
     label:
-      input.label.trim() || usageResult?.email || parsed.email || parsed.accountId,
+      input.label.trim() || existingAccount?.label || usageResult?.email || parsed.email || parsed.accountId,
     bundlePath,
     authSource: 'codex-auth-file',
     canSwitch: switchability.canSwitch,
@@ -419,11 +459,14 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
     status: usageResult ? 'ready' : 'needs-refresh',
     planType: usageResult?.planType ?? parsed.planType,
     usage: usageResult?.usage ?? null,
-    createdAt: new Date().toISOString(),
+    createdAt: existingAccount?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  await saveAccounts([nextAccount, ...accounts]);
+  await saveAccounts([
+    nextAccount,
+    ...accounts.filter((account) => account.id !== parsed.accountId)
+  ]);
   return buildDashboard();
 }
 
@@ -464,10 +507,6 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
 
   const bundle = await sessionVault.load(target.bundlePath);
   const switchability = getAuthBundleSwitchability(bundle);
-  if (isAuthBundleExpired(bundle)) {
-    throw new Error('인증이 만료된 계정입니다. 다시 로그인해서 새로 등록해 주세요.');
-  }
-
   if (target.authSource !== 'codex-auth-file' || !switchability.canSwitch) {
     throw new Error(
       switchability.reason ??
@@ -475,18 +514,56 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
     );
   }
 
-  await switchAccount(target, bundle, authAdapter, {
-    markPending: async () => {
-      const verificationState = createPendingVerification(accountId);
-      await saveState({
-        activeAccountId: accountId,
-        pendingVerificationAccountId: verificationState.accountId,
-        pendingVerificationSawStop: !(await getCodexWindowRuntime()).isOpen,
-        lastSwitchAt: verificationState.createdAt,
-        registration: currentState.registration
-      });
+  try {
+    const currentAuth = parseAuthBundle(await authAdapter.readCurrentAuth());
+    if (currentAuth.accountId === accountId) {
+      throw new Error('이미 선택한 계정이 활성 상태입니다.');
     }
-  });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('이미 선택한 계정')) {
+      throw error;
+    }
+  }
+
+  await stopCodexStack();
+
+  try {
+    const latestAuth = await authAdapter.readCurrentAuth();
+    const checkpointedAccounts = await checkpointCurrentAccount(
+      accounts,
+      latestAuth,
+      (currentAccountId, payload) => sessionVault.save(currentAccountId, payload)
+    );
+    await saveAccounts(checkpointedAccounts);
+
+    await switchAccount(target, bundle, authAdapter, {
+      markPending: async () => {
+        const verificationState = createPendingVerification(accountId);
+        await saveState({
+          activeAccountId: accountId,
+          pendingVerificationAccountId: verificationState.accountId,
+          pendingVerificationSawStop: true,
+          lastSwitchAt: verificationState.createdAt,
+          registration: currentState.registration
+        });
+      }
+    });
+  } catch (error) {
+    try {
+      await launchCodex();
+    } catch {
+      // Preserve the original switch error; the user can reopen ChatGPT manually.
+    }
+    throw error;
+  }
+
+  try {
+    await launchCodex();
+  } catch {
+    throw new Error(
+      '계정 인증은 전환됐지만 ChatGPT 앱을 자동으로 다시 열지 못했습니다. 시작 메뉴에서 ChatGPT를 직접 실행해 주세요.'
+    );
+  }
 
   return buildDashboard();
 }
@@ -507,15 +584,7 @@ async function switchRecommendedAccount(): Promise<DashboardPayload> {
 }
 
 async function terminateCodex(): Promise<DashboardPayload> {
-  try {
-    await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-Command',
-      buildCodexTerminationScript()
-    ]);
-  } catch (error) {
-    throw new Error(toCodexTerminationErrorMessage(error));
-  }
+  await stopCodexStack();
 
   return buildDashboard();
 }
@@ -544,37 +613,35 @@ function createMainWindow(): BrowserWindow {
 
   window.webContents.on('did-finish-load', () => {
     logLine('did-finish-load', window.webContents.getURL());
-    setTimeout(() => {
-      void window.webContents.capturePage().then((image) => {
-        const shotPath =
-          screenshotOutputPath ?? path.join(process.cwd(), '.debug', 'renderer-capture.png');
-        mkdirSync(path.dirname(shotPath), { recursive: true });
-        writeFileSync(shotPath, image.toPNG());
-        logLine('renderer-capture', shotPath);
-        if (autoQuitAfterCapture) {
-          setTimeout(() => {
-            app.quit();
-          }, 150);
-        }
-      });
-    }, 900);
-    void window.webContents
-      .executeJavaScript(
-        `JSON.stringify({
-          rootHtml: document.getElementById('root')?.innerHTML ?? null,
-          scriptCount: document.scripts.length,
-          bodyText: document.body?.innerText ?? ''
-        })`
-      )
-      .then((snapshot) => {
-        logLine('renderer-snapshot', snapshot);
-      })
-      .catch((error) => {
-        logLine(
-          'renderer-snapshot-error',
-          error instanceof Error ? error.stack ?? error.message : String(error)
+    if (screenshotOutputPath) {
+      setTimeout(() => {
+        void window.webContents.capturePage().then((image) => {
+          const shotPath = screenshotOutputPath;
+          mkdirSync(path.dirname(shotPath), { recursive: true });
+          writeFileSync(shotPath, image.toPNG());
+          logLine('renderer-capture', shotPath);
+          if (autoQuitAfterCapture) {
+            setTimeout(() => app.quit(), 150);
+          }
+        });
+      }, 900);
+
+      void window.webContents
+        .executeJavaScript(
+          `JSON.stringify({
+            rootHtml: document.getElementById('root')?.innerHTML ?? null,
+            scriptCount: document.scripts.length,
+            bodyText: document.body?.innerText ?? ''
+          })`
+        )
+        .then((snapshot) => logLine('renderer-snapshot', snapshot))
+        .catch((error) =>
+          logLine(
+            'renderer-snapshot-error',
+            error instanceof Error ? error.stack ?? error.message : String(error)
+          )
         );
-      });
+    }
   });
 
   window.webContents.on('console-message', (event) => {
@@ -603,16 +670,24 @@ function createMainWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  ipcMain.handle('dashboard:get', buildDashboard);
-  ipcMain.handle('account:refresh-all', refreshAll);
-  ipcMain.handle('account:refresh', (_event, accountId: string) => refreshAccount(accountId));
-  ipcMain.handle('account:delete', (_event, accountId: string) => deleteAccount(accountId));
-  ipcMain.handle('account:capture-current-auth', (_event, input: CaptureAccountInput) =>
-    captureCurrentAuth(input)
+  ipcMain.handle('dashboard:get', () => serializeOperation(buildDashboard));
+  ipcMain.handle('account:refresh-all', () => serializeOperation(refreshAll));
+  ipcMain.handle('account:refresh', (_event, accountId: string) =>
+    serializeOperation(() => refreshAccount(accountId))
   );
-  ipcMain.handle('account:switch', (_event, accountId: string) => switchSelectedAccount(accountId));
-  ipcMain.handle('account:switch-recommended', switchRecommendedAccount);
-  ipcMain.handle('codex:terminate', terminateCodex);
+  ipcMain.handle('account:delete', (_event, accountId: string) =>
+    serializeOperation(() => deleteAccount(accountId))
+  );
+  ipcMain.handle('account:capture-current-auth', (_event, input: CaptureAccountInput) =>
+    serializeOperation(() => captureCurrentAuth(input))
+  );
+  ipcMain.handle('account:switch', (_event, accountId: string) =>
+    serializeOperation(() => switchSelectedAccount(accountId))
+  );
+  ipcMain.handle('account:switch-recommended', () =>
+    serializeOperation(switchRecommendedAccount)
+  );
+  ipcMain.handle('codex:terminate', () => serializeOperation(terminateCodex));
 
   createMainWindow();
 
