@@ -30,6 +30,7 @@ const state: DesktopState = {
   activeAccountId: null,
   pendingVerificationAccountId: null,
   pendingVerificationSawStop: false,
+  autoRestartOnSwitch: true,
   lastSwitchAt: null,
   registration: null
 };

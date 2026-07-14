@@ -5,6 +5,7 @@ export type DesktopState = {
   activeAccountId: string | null;
   pendingVerificationAccountId: string | null;
   pendingVerificationSawStop: boolean;
+  autoRestartOnSwitch: boolean;
   lastSwitchAt: string | null;
   registration: RegistrationState | null;
 };
@@ -31,5 +32,6 @@ export type DesktopApi = {
   captureCurrentAuth(input: CaptureAccountInput): Promise<DashboardPayload>;
   switchAccount(accountId: string): Promise<DashboardPayload>;
   switchRecommendedAccount(): Promise<DashboardPayload>;
+  setAutoRestartOnSwitch(enabled: boolean): Promise<DashboardPayload>;
   terminateCodex(): Promise<DashboardPayload>;
 };

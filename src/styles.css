@@ -97,6 +97,84 @@ button:not(:disabled):hover {
   align-self: center;
 }
 
+.auto-restart-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  justify-self: end;
+  max-width: 30rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(79, 62, 45, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 251, 245, 0.78);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-restart-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.auto-restart-track {
+  position: relative;
+  width: 2.7rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: #b9aea3;
+  box-shadow: inset 0 0 0 1px rgba(47, 36, 29, 0.12);
+  transition: background 160ms ease;
+}
+
+.auto-restart-thumb {
+  position: absolute;
+  top: 0.18rem;
+  left: 0.2rem;
+  width: 1.14rem;
+  height: 1.14rem;
+  border-radius: 50%;
+  background: #fffef8;
+  box-shadow: 0 2px 7px rgba(47, 36, 29, 0.28);
+  transition: transform 160ms ease;
+}
+
+.auto-restart-toggle input:checked + .auto-restart-track {
+  background: #42643c;
+}
+
+.auto-restart-toggle input:checked + .auto-restart-track .auto-restart-thumb {
+  transform: translateX(1.16rem);
+}
+
+.auto-restart-toggle input:focus-visible + .auto-restart-track {
+  outline: 3px solid rgba(69, 99, 58, 0.28);
+  outline-offset: 3px;
+}
+
+.auto-restart-copy {
+  min-width: 0;
+}
+
+.summary-bar .auto-restart-copy strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.auto-restart-copy small {
+  display: block;
+  margin-top: 0.2rem;
+  color: #76675c;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .summary-action-row {
   display: flex;
   justify-content: flex-end;
@@ -127,6 +205,16 @@ button:not(:disabled):hover {
 .ghost-button {
   background: rgba(79, 62, 45, 0.08);
   color: #4d4035;
+}
+
+.danger-button {
+  background: #b42318;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(180, 35, 24, 0.24);
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #921f17;
 }
 
 .status-banner {
@@ -300,6 +388,11 @@ button:not(:disabled):hover {
 
   .summary-actions {
     justify-content: stretch;
+  }
+
+  .auto-restart-toggle {
+    justify-self: stretch;
+    max-width: none;
   }
 
   .summary-action-row {

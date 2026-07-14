@@ -8,5 +8,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   captureCurrentAuth: (input) => ipcRenderer.invoke('account:capture-current-auth', input),
   switchAccount: (accountId) => ipcRenderer.invoke('account:switch', accountId),
   switchRecommendedAccount: () => ipcRenderer.invoke('account:switch-recommended'),
+  setAutoRestartOnSwitch: (enabled) =>
+    ipcRenderer.invoke('settings:set-auto-restart-on-switch', enabled),
   terminateCodex: () => ipcRenderer.invoke('codex:terminate')
 });

@@ -2,9 +2,9 @@
 
 Windows용 ChatGPT/Codex에서 여러 ChatGPT 계정의 인증을 안전하게 저장하고 전환하는 데스크톱 앱입니다.
 
-v0.2.0은 최신 Windows 앱의 `ChatGPT.exe` 호스트 구조에 맞춰 전환 엔진을 다시 만들었습니다. 계정을 전환할 때 공유 Codex 홈은 그대로 두고 `auth.json`만 교체하므로 기존 채팅, 프로젝트, 설정, 플러그인과 로컬 작업 기록이 유지됩니다.
+v0.2.1은 최신 Windows 앱의 `ChatGPT.exe` 호스트 구조에 맞춘 안전한 전환 엔진에 **자동 종료·재시작 선택 기능**을 추가했습니다. 계정을 전환할 때 공유 Codex 홈은 그대로 두고 `auth.json`만 교체하므로 기존 채팅, 프로젝트, 설정, 플러그인과 로컬 작업 기록이 유지됩니다.
 
-## v0.2.0에서 해결한 문제
+## v0.2.1 주요 기능
 
 - 최신 앱의 프로세스 이름인 `ChatGPT.exe`와 기존 `Codex.exe`를 모두 인식합니다.
 - 창에 정상 종료 요청을 먼저 보내 로컬 SQLite와 채팅 상태가 저장될 시간을 줍니다.
@@ -14,7 +14,10 @@ v0.2.0은 최신 Windows 앱의 `ChatGPT.exe` 호스트 구조에 맞춰 전환 
 - 카탈로그가 복구되지 않아도 정상 암호화 번들을 찾아 계정 목록을 재구성합니다.
 - 이미 등록된 계정을 다시 저장하면 오류 대신 최신 인증과 이름으로 갱신합니다.
 - 전환 전 `auth.json` 롤백 백업을 암호화해서 보관합니다.
-- 계정 전환 후 설치된 `OpenAI.Codex` Windows 앱을 자동으로 다시 엽니다.
+- **전환 시 자동 종료·재시작** 옵션을 켜면 안전한 종료부터 앱 재실행까지 자동 처리합니다.
+- 옵션을 끄면 앱이 완전히 종료된 경우에만 인증을 전환하며, 열린 상태에서는 전환을 차단합니다.
+- 수동 종료 버튼을 위험 동작임이 분명한 빨간색 **ChatGPT/Codex 종료** 버튼으로 표시합니다.
+- 자동 재시작 선택은 `app-state.json`에 저장되어 다음 실행에도 유지됩니다.
 
 ## 채팅과 설정이 유지되는 이유
 
@@ -33,8 +36,8 @@ v0.2.0은 최신 Windows 앱의 `ChatGPT.exe` 호스트 구조에 맞춰 전환 
 
 GitHub Releases에서 다음 중 하나를 받습니다.
 
-- `OAuth Account Switcher-0.2.0-x64.exe`: 설치 프로그램
-- `OAuth Account Switcher-0.2.0-x64.zip`: 포터블 패키지
+- `OAuth Account Switcher-0.2.1-x64.exe`: 설치 프로그램
+- `OAuth Account Switcher-0.2.1-x64.zip`: 포터블 패키지
 
 기존 v0.1.x 위에 설치해도 `%USERPROFILE%\.oauth-account-switcher` 데이터는 그대로 사용합니다.
 
@@ -45,6 +48,8 @@ GitHub Releases에서 다음 중 하나를 받습니다.
 3. ChatGPT/Codex의 공식 로그아웃과 로그인 화면으로 두 번째 계정에 로그인합니다.
 4. 전환기에서 두 번째 계정도 저장합니다.
 5. 이후 계정 카드의 **이 계정으로 전환**을 누릅니다.
+
+기본값인 **전환 시 자동 종료·재시작**을 켜 두면 종료와 재실행까지 전환기가 처리합니다. 이 옵션을 끈 경우에는 먼저 빨간색 **ChatGPT/Codex 종료** 버튼을 누르고, 계정 전환이 끝난 뒤 앱을 직접 실행하세요.
 
 전환기는 다음 순서로 처리합니다.
 
@@ -59,7 +64,7 @@ GitHub Releases에서 다음 중 하나를 받습니다.
 
 ## 기존 오류에서 자동 복구
 
-아래 오류가 발생했던 기존 데이터도 v0.2.0 시작 시 복구를 시도합니다.
+아래 오류가 발생했던 기존 데이터도 v0.2.0 이상에서 시작 시 복구를 시도합니다.
 
 ```text
 Error invoking remote method 'dashboard:get':
@@ -109,4 +114,4 @@ npm run dist:win
 
 테스트에는 JSON 손상 복구, 계정 카탈로그 재구성, refresh token 체크포인트, 전환 롤백, ChatGPT/Codex 프로세스 스크립트, 채팅·설정 파일 불변성 검증이 포함됩니다.
 
-자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.2.0.md](docs/RELEASE_0.2.0.md)를 참고하세요.
+자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.2.1.md](docs/RELEASE_0.2.1.md)를 참고하세요.

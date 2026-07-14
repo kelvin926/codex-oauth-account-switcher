@@ -42,6 +42,7 @@ function emptyDashboard(): DashboardPayload {
       activeAccountId: null,
       pendingVerificationAccountId: null,
       pendingVerificationSawStop: false,
+      autoRestartOnSwitch: true,
       lastSwitchAt: null,
       registration: null
     }
@@ -81,6 +82,7 @@ export function getDemoDashboard(scenario: DemoScenario): DashboardPayload {
         activeAccountId: 'demo-active',
         pendingVerificationAccountId: 'demo-recommended',
         pendingVerificationSawStop: true,
+        autoRestartOnSwitch: true,
         lastSwitchAt: '2026-04-17T12:04:00.000Z',
         registration: null
       }
@@ -93,6 +95,7 @@ export function getDemoDashboard(scenario: DemoScenario): DashboardPayload {
       activeAccountId: 'demo-active',
       pendingVerificationAccountId: null,
       pendingVerificationSawStop: false,
+      autoRestartOnSwitch: true,
       lastSwitchAt: null,
       registration: null
     }

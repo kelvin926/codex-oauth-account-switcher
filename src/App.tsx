@@ -29,6 +29,7 @@ export default function App() {
         activeAccountId: null,
         pendingVerificationAccountId: null,
         pendingVerificationSawStop: false,
+        autoRestartOnSwitch: true,
         lastSwitchAt: null,
         registration: null
       }
@@ -141,16 +142,27 @@ export default function App() {
         activeLabel={activeAccount?.label ?? '로그인 확인 필요'}
         recommendedLabel={recommended?.label ?? '등록된 계정 없음'}
         recommendedDisabled={!recommended || recommended.id === activeAccount?.id}
+        autoRestartOnSwitch={dashboard.state.autoRestartOnSwitch}
         onSwitchRecommended={() =>
           void runAction(
             () => window.desktopApi.switchRecommendedAccount(),
-            '추천 계정으로 전환했습니다. ChatGPT를 다시 여는 중입니다.'
+            dashboard.state.autoRestartOnSwitch
+              ? '추천 계정으로 전환했습니다. ChatGPT를 자동으로 다시 여는 중입니다.'
+              : '추천 계정으로 전환했습니다. ChatGPT/Codex를 직접 실행해 주세요.'
           )
         }
         onRefreshAll={() =>
           void runAction(
             () => window.desktopApi.refreshAll(),
             '모든 계정의 사용량을 다시 불러왔습니다.'
+          )
+        }
+        onAutoRestartChange={(enabled) =>
+          void runAction(
+            () => window.desktopApi.setAutoRestartOnSwitch(enabled),
+            enabled
+              ? '계정 전환 시 ChatGPT/Codex를 자동으로 종료하고 다시 엽니다.'
+              : '자동 종료·재시작을 껐습니다. 전환 전 빨간 종료 버튼을 먼저 눌러 주세요.'
           )
         }
         onTerminateCodex={() =>
@@ -199,7 +211,9 @@ export default function App() {
             onSwitch={() =>
               void runAction(
                 () => window.desktopApi.switchAccount(account.id),
-                `${account.label} 계정으로 전환했습니다. ChatGPT를 다시 여는 중입니다.`
+                dashboard.state.autoRestartOnSwitch
+                  ? `${account.label} 계정으로 전환했습니다. ChatGPT를 자동으로 다시 여는 중입니다.`
+                  : `${account.label} 계정으로 전환했습니다. ChatGPT/Codex를 직접 실행해 주세요.`
               )
             }
           />

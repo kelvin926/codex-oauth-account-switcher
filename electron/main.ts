@@ -32,6 +32,10 @@ import { CatalogStore } from '../src/core/storage.js';
 import { createAesSecretBox } from '../src/core/security/createAesSecretBox.js';
 import { SessionVault } from '../src/core/security/sessionVault.js';
 import { switchAccount } from '../src/core/switchOrchestrator.js';
+import {
+  createSwitchExecutionPlan,
+  normalizeAutoRestartOnSwitch
+} from '../src/core/switchExecution.js';
 import { createPendingVerification } from '../src/core/verification.js';
 import type { AccountRecord } from '../src/core/types';
 import type {
@@ -166,6 +170,7 @@ async function loadState(): Promise<DesktopState> {
         ? value.pendingVerificationAccountId
         : null,
     pendingVerificationSawStop: value.pendingVerificationSawStop === true,
+    autoRestartOnSwitch: normalizeAutoRestartOnSwitch(value.autoRestartOnSwitch),
     lastSwitchAt: typeof value.lastSwitchAt === 'string' ? value.lastSwitchAt : null,
     registration: isPendingRegistrationSession(value.registration)
       ? toPublicRegistrationState(value.registration)
@@ -525,7 +530,15 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
     }
   }
 
-  await stopCodexStack();
+  const runtime = await getCodexWindowRuntime();
+  const executionPlan = createSwitchExecutionPlan(
+    currentState.autoRestartOnSwitch,
+    runtime.isOpen
+  );
+
+  if (executionPlan.shouldStop) {
+    await stopCodexStack();
+  }
 
   try {
     const latestAuth = await authAdapter.readCurrentAuth();
@@ -536,33 +549,46 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
     );
     await saveAccounts(checkpointedAccounts);
 
+    const runtimeBeforeSwap = await getCodexWindowRuntime();
+    const recheckedExecutionPlan = createSwitchExecutionPlan(
+      currentState.autoRestartOnSwitch,
+      runtimeBeforeSwap.isOpen
+    );
+    if (runtimeBeforeSwap.isOpen && recheckedExecutionPlan.shouldStop) {
+      await stopCodexStack();
+    }
+
     await switchAccount(target, bundle, authAdapter, {
       markPending: async () => {
         const verificationState = createPendingVerification(accountId);
         await saveState({
+          ...currentState,
           activeAccountId: accountId,
           pendingVerificationAccountId: verificationState.accountId,
           pendingVerificationSawStop: true,
-          lastSwitchAt: verificationState.createdAt,
-          registration: currentState.registration
+          lastSwitchAt: verificationState.createdAt
         });
       }
     });
   } catch (error) {
-    try {
-      await launchCodex();
-    } catch {
-      // Preserve the original switch error; the user can reopen ChatGPT manually.
+    if (executionPlan.shouldLaunch) {
+      try {
+        await launchCodex();
+      } catch {
+        // Preserve the original switch error; the user can reopen ChatGPT manually.
+      }
     }
     throw error;
   }
 
-  try {
-    await launchCodex();
-  } catch {
-    throw new Error(
-      '계정 인증은 전환됐지만 ChatGPT 앱을 자동으로 다시 열지 못했습니다. 시작 메뉴에서 ChatGPT를 직접 실행해 주세요.'
-    );
+  if (executionPlan.shouldLaunch) {
+    try {
+      await launchCodex();
+    } catch {
+      throw new Error(
+        '계정 인증은 전환됐지만 ChatGPT 앱을 자동으로 다시 열지 못했습니다. 시작 메뉴에서 ChatGPT를 직접 실행해 주세요.'
+      );
+    }
   }
 
   return buildDashboard();
@@ -585,6 +611,20 @@ async function switchRecommendedAccount(): Promise<DashboardPayload> {
 
 async function terminateCodex(): Promise<DashboardPayload> {
   await stopCodexStack();
+
+  return buildDashboard();
+}
+
+async function setAutoRestartOnSwitch(enabled: boolean): Promise<DashboardPayload> {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('자동 종료·재시작 설정 값이 올바르지 않습니다.');
+  }
+
+  const state = await loadState();
+  await saveState({
+    ...state,
+    autoRestartOnSwitch: enabled
+  });
 
   return buildDashboard();
 }
@@ -686,6 +726,9 @@ app.whenReady().then(() => {
   );
   ipcMain.handle('account:switch-recommended', () =>
     serializeOperation(switchRecommendedAccount)
+  );
+  ipcMain.handle('settings:set-auto-restart-on-switch', (_event, enabled: boolean) =>
+    serializeOperation(() => setAutoRestartOnSwitch(enabled))
   );
   ipcMain.handle('codex:terminate', () => serializeOperation(terminateCodex));
 
