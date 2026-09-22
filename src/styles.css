@@ -409,3 +409,8 @@ button:not(:disabled):hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+.dashboard-controls {
+  display: contents;
+}

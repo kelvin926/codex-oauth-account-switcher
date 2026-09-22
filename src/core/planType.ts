@@ -15,23 +15,19 @@ export const PLAN_LABELS: Record<PlanType, string> = {
   unknown: '알 수 없음'
 };
 
-// Official April 2026 guidance:
-// - Plus is the baseline.
-// - Pro $100 is 5x higher usage than Plus, with 10x Codex usage for a limited time.
-// - Pro $200 is 20x higher usage than Plus.
-// For Business / Enterprise / Edu, current help docs describe seat/credit models rather than
-// a single personal-plan multiplier, so we keep them neutral unless a Codex-only seat is detected.
+// Heuristic only: known personal tiers use their advertised relative capacity.
+// An unspecified Pro tier and credit-based seats have no inferable multiplier.
 export const PLAN_CAPACITY_MULTIPLIER: Record<PlanType, number> = {
   free: 1,
   go: 1,
   plus: 1,
-  pro: 10,
-  'pro-5x': 10,
+  pro: 1,
+  'pro-5x': 5,
   'pro-20x': 20,
   business: 1,
-  'business-codex': 100,
+  'business-codex': 1,
   enterprise: 1,
-  'enterprise-codex': 100,
+  'enterprise-codex': 1,
   edu: 1,
   unknown: 1
 };
@@ -109,3 +105,4 @@ export function normalizePlanType(value: string | undefined | null): PlanType {
 
   return 'unknown';
 }
+

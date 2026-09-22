@@ -35,10 +35,11 @@
 - Keep the app as a single-window dashboard for v1.
 - Separate `core` logic from UI so the account catalog, recommendation engine, and auth/usage adapters can be tested independently.
 - OAuth/session switching is the main product goal.
-- Usage-based recommendation must consider both the 5-hour and 1-week windows and favor the earlier bottleneck, not a single-window percentage alone.
+- Usage-based recommendation must consider every quota window actually returned by the server and favor the earlier bottleneck. Never assume every plan has a 5-hour window; absent windows must not become zero remaining.
 
 ## Delegation and Review Rules
 
 - Prefer independent review for plans and code changes when host policy allows.
 - If delegation is unavailable, record the fallback reason explicitly in the sure artifacts.
+
 

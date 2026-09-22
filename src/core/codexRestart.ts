@@ -1,5 +1,6 @@
 export function buildCodexTerminationScript(): string {
   return [
+    "$ErrorActionPreference = 'Stop';",
     "$names = @('ChatGPT', 'Codex');",
     '$codexProcesses = @(Get-Process -Name $names -ErrorAction SilentlyContinue);',
     'if ($codexProcesses.Count -eq 0) { return }',
@@ -19,6 +20,7 @@ export function buildCodexTerminationScript(): string {
 
 export function buildCodexRuntimeScript(): string {
   return [
+    "$ErrorActionPreference = 'Stop';",
     "$names = @('ChatGPT', 'Codex');",
     '$processes = @(Get-Process -Name $names -ErrorAction SilentlyContinue);',
     '$windows = @($processes | Where-Object { $_.MainWindowHandle -ne 0 });',
@@ -31,19 +33,55 @@ export function buildCodexRuntimeScript(): string {
   ].join(' ');
 }
 
+// Use out-of-process COM activation: the short-lived PowerShell host must not own
+// the activated app's launch arguments. No Explorer or shell:AppsFolder is involved.
+export function buildWindowsActivationTypeScript(): string {
+  return `Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+[ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface ISwitcherApplicationActivationManager {
+  [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appId,
+    [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
+}
+public static class SwitcherAppActivation {
+  [DllImport("ole32.dll", PreserveSig = true)]
+  static extern int CoCreateInstance(ref Guid clsid, IntPtr outer, uint context,
+    ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out ISwitcherApplicationActivationManager manager);
+  public static uint Activate(string appId) {
+    Guid clsid = new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C");
+    Guid iid = new Guid("2e941141-7f97-4756-ba1d-9decde894a3d");
+    ISwitcherApplicationActivationManager manager;
+    Marshal.ThrowExceptionForHR(CoCreateInstance(ref clsid, IntPtr.Zero, 4, ref iid, out manager));
+    try {
+      uint processId;
+      Marshal.ThrowExceptionForHR(manager.ActivateApplication(appId, null, 2, out processId));
+      return processId;
+    } finally { Marshal.ReleaseComObject(manager); }
+  }
+}
+'@`;
+}
+
 export function buildCodexLaunchScript(): string {
   return [
-    "$package = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |",
-    '  Sort-Object Version -Descending | Select-Object -First 1;',
-    'if ($package) {',
-    '  $manifest = $package | Get-AppxPackageManifest;',
-    '  $appId = [string]$manifest.Package.Applications.Application.Id;',
-    '  $target = "shell:AppsFolder\\$($package.PackageFamilyName)!$appId";',
-    "  Start-Process 'explorer.exe' -ArgumentList $target;",
-    '} else {',
-    "  Start-Process 'codex://';",
-    '}'
-  ].join(' ');
+    "$ErrorActionPreference = 'Stop';",
+    buildWindowsActivationTypeScript(),
+    "$package = Get-AppxPackage -Name 'OpenAI.Codex' | Sort-Object Version -Descending | Select-Object -First 1;",
+    "if (-not $package) { $package = Get-AppxPackage -Name 'OpenAI.ChatGPT' | Sort-Object Version -Descending | Select-Object -First 1 };",
+    'if (-not $package) { throw "ChatGPT/Codex 설치를 찾을 수 없습니다. 시작 메뉴에서 직접 실행해 주세요." };',
+    '$manifest = $package | Get-AppxPackageManifest;',
+    '$apps = @($manifest.Package.Applications.Application);',
+    "$candidates = @($apps | Where-Object { $_.Extensions.Extension.Protocol.Name -contains 'codex' });",
+    'if ($candidates.Count -eq 0) {',
+    "  $candidates = @($apps | Where-Object { [System.IO.Path]::GetFileName([string]$_.Executable) -match '^(ChatGPT|Codex)\\.exe$' });",
+    '};',
+    'if ($candidates.Count -ne 1) { throw "ChatGPT/Codex 실행 항목을 하나로 식별하지 못했습니다. 시작 메뉴에서 직접 실행해 주세요." };',
+    '$appId = [string]$candidates[0].Id;',
+    "if ([string]::IsNullOrWhiteSpace($appId) -or [string]::IsNullOrWhiteSpace($package.PackageFamilyName)) { throw 'Invalid application identity' };",
+    '$target = "$($package.PackageFamilyName)!$appId";',
+    '$null = [SwitcherAppActivation]::Activate($target);'
+  ].join('\n');
 }
 
 export function toCodexTerminationErrorMessage(error: unknown): string {
@@ -59,3 +97,4 @@ export function toCodexTerminationErrorMessage(error: unknown): string {
 
   return 'ChatGPT/Codex 종료 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
+

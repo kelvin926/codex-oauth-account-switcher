@@ -1,13 +1,13 @@
 {
   "name": "oauth-account-switcher",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Safe Windows account switcher for the ChatGPT-integrated Codex app.",
   "private": false,
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "author": "ventianima-lab",
   "scripts": {
-    "build:renderer": "vite build",
+    "build:renderer": "tsc --noEmit -p tsconfig.json && vite build",
     "build:main": "tsc -p tsconfig.node.json",
     "build": "npm run build:renderer && npm run build:main",
     "start": "npm run build && electron .",
@@ -16,6 +16,7 @@
     "screenshots:capture": "node scripts/capture-release-assets.mjs",
     "dist": "npm run build && electron-builder --win nsis zip",
     "dist:win": "npm run dist",
+    "dist:ci": "npm run build && electron-builder --win nsis zip --publish never",
     "release:local": "npm run screenshots:capture && npm run dist:win"
   },
   "dependencies": {
@@ -85,3 +86,4 @@
     }
   }
 }
+

@@ -36,6 +36,18 @@ const state: DesktopState = {
 };
 
 describe('AccountCard', () => {
+  it('renders weekly-only Pro without a five-hour row and disables the active account', () => {
+    const weeklyAccount: AccountRecord = { ...account, planType: 'pro', usage: {
+      ...account.usage!, primaryRemainingPercent: null, primaryResetAt: null,
+      primaryWindowSeconds: null, secondaryWindowSeconds: 604800
+    } };
+    const { container } = render(<AccountCard account={weeklyAccount}
+      state={{ ...state, activeAccountId: account.id }} recommendedId={null}
+      onRefresh={vi.fn()} onDelete={vi.fn()} onSwitch={vi.fn()} />);
+    expect(container.textContent).not.toContain('5시간');
+    expect(container.textContent).toContain('1주 남은 양');
+    expect(container.querySelector<HTMLButtonElement>('.primary-button')?.disabled).toBe(true);
+  });
   it('shows metrics grouped by quota window before score and timestamp', () => {
     const { container } = render(
       <AccountCard

@@ -3,7 +3,7 @@ import { useState } from 'react';
 type AddAccountModalProps = {
   open: boolean;
   onClose: () => void;
-  onCapture: (label: string) => Promise<void>;
+  onCapture: (label: string) => Promise<boolean>;
 };
 
 export function AddAccountModal(props: AddAccountModalProps) {
@@ -46,8 +46,7 @@ export function AddAccountModal(props: AddAccountModalProps) {
             onClick={async () => {
               setPending(true);
               try {
-                await props.onCapture(label);
-                setLabel('');
+                if (await props.onCapture(label)) setLabel('');
               } finally {
                 setPending(false);
               }
@@ -60,3 +59,4 @@ export function AddAccountModal(props: AddAccountModalProps) {
     </div>
   );
 }
+

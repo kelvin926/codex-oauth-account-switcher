@@ -1,21 +1,20 @@
 import type { AccountRecord } from './types.js';
 import { PLAN_CAPACITY_MULTIPLIER } from './planType.js';
+import { getUsageWindows } from './usageWindows.js';
 
 const RESET_BONUS_WEIGHT = 0.35;
-const PRIMARY_WINDOW_HOURS = 5;
-const SECONDARY_WINDOW_HOURS = 24 * 7;
 
 function getResetUrgencyMultiplier(
   resetAt: string | null | undefined,
-  windowHours: number,
+  windowHours: number | null,
   now = new Date()
 ): number {
-  if (!resetAt) {
+  if (!resetAt || !windowHours) {
     return 1;
   }
 
   const resetTime = new Date(resetAt);
-  if (Number.isNaN(resetTime.getTime())) {
+  if (Number.isNaN(resetTime.getTime()) || resetTime.getTime() <= now.getTime()) {
     return 1;
   }
 
@@ -26,23 +25,22 @@ function getResetUrgencyMultiplier(
 }
 
 export function computeEffectiveRemaining(account: AccountRecord): number {
-  if (!account.usage) {
+  if (!account.usage || account.usage.allowed === false || account.usage.limitReached) {
     return 0;
   }
 
-  return (
-    Math.min(
-      account.usage.primaryRemainingPercent *
-        getResetUrgencyMultiplier(account.usage.primaryResetAt, PRIMARY_WINDOW_HOURS),
-      account.usage.secondaryRemainingPercent *
-        getResetUrgencyMultiplier(account.usage.secondaryResetAt, SECONDARY_WINDOW_HOURS)
-    ) * PLAN_CAPACITY_MULTIPLIER[account.planType]
-  );
+  const windows = getUsageWindows(account.usage);
+  if (windows.length === 0) return 0;
+  return Math.min(...windows.map((window) =>
+    Math.min(100, Math.max(0, window.remaining)) *
+      getResetUrgencyMultiplier(window.resetAt, window.seconds ? window.seconds / 3600 : null)
+  )) * (PLAN_CAPACITY_MULTIPLIER[account.planType] ?? 1);
 }
 
 export function chooseRecommendedAccount(accounts: AccountRecord[]): AccountRecord | null {
   const eligibleAccounts = accounts.filter(
-    (account) => account.status !== 'expired' && account.canSwitch !== false
+    (account) => account.status === 'ready' && account.canSwitch !== false &&
+      computeEffectiveRemaining(account) > 0
   );
 
   if (eligibleAccounts.length === 0) {

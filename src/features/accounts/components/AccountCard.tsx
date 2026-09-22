@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+import { formatWindowLabel, getUsageWindows } from '../../../core/usageWindows';
 import { PLAN_LABELS } from '../../../shared/desktopApi';
 import type { AccountRecord } from '../../../core/types';
 import {
@@ -21,7 +23,8 @@ type AccountCardProps = {
 export function AccountCard(props: AccountCardProps) {
   const { account } = props;
   const badge = getAccountBadge(account, props.state, props.recommendedId);
-  const switchDisabled = account.canSwitch === false;
+  const switchDisabled = account.canSwitch === false || props.state.activeAccountId === account.id;
+  const windows = getUsageWindows(account.usage);
 
   return (
     <article className="account-card">
@@ -33,26 +36,26 @@ export function AccountCard(props: AccountCardProps) {
         <span className="badge">{badge}</span>
       </div>
       <dl className="metric-grid">
-        <div>
-          <dt>5시간 남은 양</dt>
-          <dd>{formatRemaining(account.usage?.primaryRemainingPercent)}</dd>
-        </div>
-        <div>
-          <dt>5시간 초기화</dt>
-          <dd className="metric-value-compact">
-            {formatResetTimestamp(account.usage?.primaryResetAt)}
-          </dd>
-        </div>
-        <div>
-          <dt>1주 남은 양</dt>
-          <dd>{formatRemaining(account.usage?.secondaryRemainingPercent)}</dd>
-        </div>
-        <div>
-          <dt>1주 초기화</dt>
-          <dd className="metric-value-compact">
-            {formatResetTimestamp(account.usage?.secondaryResetAt)}
-          </dd>
-        </div>
+        {windows.map((window) => (
+          <Fragment key={window.key}>
+            <div>
+              <dt>{formatWindowLabel(window.seconds, window.key)} 남은 양</dt>
+              <dd>{formatRemaining(window.remaining)}</dd>
+            </div>
+            <div>
+              <dt>{formatWindowLabel(window.seconds, window.key)} 초기화</dt>
+              <dd className="metric-value-compact">{formatResetTimestamp(window.resetAt)}</dd>
+            </div>
+          </Fragment>
+        ))}
+        {windows.length === 0 ? (
+          <div>
+            <dt>사용량</dt>
+            <dd className="metric-value-compact">
+              {account.usage ? '표시할 한도 없음' : '확인 필요'}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>추천 점수</dt>
           <dd>{getAccountScore(account)}</dd>
@@ -64,6 +67,12 @@ export function AccountCard(props: AccountCardProps) {
           </dd>
         </div>
       </dl>
+      {account.usage?.allowed === false || account.usage?.limitReached ? (
+        <p className="card-note">서버에서 사용 한도에 도달한 것으로 표시했습니다.</p>
+      ) : null}
+      {account.status === 'needs-refresh' ? (
+        <p className="card-note">사용량을 다시 확인해 주세요. 이전 수치는 추천에 반영하지 않습니다.</p>
+      ) : null}
       {account.switchBlockedReason ? (
         <p className="card-note">{account.switchBlockedReason}</p>
       ) : null}
@@ -86,3 +95,4 @@ export function AccountCard(props: AccountCardProps) {
     </article>
   );
 }
+

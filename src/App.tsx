@@ -22,6 +22,9 @@ export default function App() {
     [demoScenario]
   );
   const startupRefreshAttemptedRef = useRef(false);
+  const actionPendingRef = useRef(false);
+  const actionVersionRef = useRef(0);
+  const [busy, setBusy] = useState(!isDemoMode);
   const [dashboard, setDashboard] = useState<DashboardPayload>({
     accounts: demoDashboard?.accounts ?? [],
     state:
@@ -55,6 +58,8 @@ export default function App() {
     let cancelled = false;
 
     async function loadDashboardWithStartupRefresh() {
+      actionPendingRef.current = true;
+      setBusy(true);
       try {
         const initialDashboard = await window.desktopApi.getDashboard();
         if (cancelled) return;
@@ -72,6 +77,11 @@ export default function App() {
             message: error instanceof Error ? error.message : '예상하지 못한 오류가 발생했습니다.'
           });
         }
+      } finally {
+        if (!cancelled) {
+          actionPendingRef.current = false;
+          setBusy(false);
+        }
       }
     }
 
@@ -84,13 +94,20 @@ export default function App() {
   useEffect(() => {
     if (isDemoMode) return;
 
+    let inFlight = false;
+    let cancelled = false;
     const intervalId = window.setInterval(() => {
-      void window.desktopApi.getDashboard().then(setDashboard).catch(() => {
-        // Keep the last good state visible during a transient file or process transition.
-      });
+      if (actionPendingRef.current || inFlight) return;
+      inFlight = true;
+      const version = actionVersionRef.current;
+      void window.desktopApi.getDashboard().then((next) => {
+        if (!cancelled && version === actionVersionRef.current) setDashboard(next);
+      }).catch(() => {
+        // Keep the last good state visible during a transient transition.
+      }).finally(() => { inFlight = false; });
     }, 5000);
 
-    return () => window.clearInterval(intervalId);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [isDemoMode]);
 
   useEffect(() => {
@@ -114,22 +131,34 @@ export default function App() {
         kind: 'success',
         message: '공개 저장소용 데모 화면입니다. 실제 계정 정보는 사용하지 않습니다.'
       });
-      return;
+      return true;
     }
+    if (actionPendingRef.current) return false;
+    actionPendingRef.current = true;
+    actionVersionRef.current += 1;
+    setBusy(true);
+    setStatus({ kind: 'idle', message: '' });
 
     try {
       const next = await action();
       setDashboard(next);
       setStatus({ kind: 'success', message: successMessage });
+      return true;
     } catch (error) {
       setStatus({
         kind: 'error',
         message: error instanceof Error ? error.message : '예상하지 못한 오류가 발생했습니다.'
       });
+      // A failed relaunch can still leave the authentication successfully switched.
+      try { setDashboard(await window.desktopApi.getDashboard()); } catch { /* Preserve the error. */ }
+      return false;
+    } finally {
+      actionPendingRef.current = false;
+      setBusy(false);
     }
   }
 
-  const bannerMessage =
+  const bannerMessage = busy ? '처리 중입니다. 잠시 기다려 주세요.' :
     status.kind === 'idle'
       ? isDemoMode
         ? '공개 저장소용 데모 화면입니다. 실제 계정 정보 없이 기능 예시만 표시합니다.'
@@ -137,10 +166,11 @@ export default function App() {
       : status.message;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" aria-busy={busy}>
+      <fieldset className="dashboard-controls" disabled={busy}>
       <SummaryBar
         activeLabel={activeAccount?.label ?? '로그인 확인 필요'}
-        recommendedLabel={recommended?.label ?? '등록된 계정 없음'}
+        recommendedLabel={recommended?.label ?? '추천 가능한 계정 없음'}
         recommendedDisabled={!recommended || recommended.id === activeAccount?.id}
         autoRestartOnSwitch={dashboard.state.autoRestartOnSwitch}
         onSwitchRecommended={() =>
@@ -162,7 +192,7 @@ export default function App() {
             () => window.desktopApi.setAutoRestartOnSwitch(enabled),
             enabled
               ? '계정 전환 시 ChatGPT/Codex를 자동으로 종료하고 다시 엽니다.'
-              : '자동 종료·재시작을 껐습니다. 전환 전 빨간 종료 버튼을 먼저 눌러 주세요.'
+              : '자동 종료 및 재시작을 껐습니다. 전환 전 빨간 종료 버튼을 먼저 눌러 주세요.'
           )
         }
         onTerminateCodex={() =>
@@ -224,13 +254,15 @@ export default function App() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCapture={async (label) => {
-          await runAction(
+          const saved = await runAction(
             () => window.desktopApi.captureCurrentAuth({ label }),
             '현재 인증을 안전하게 저장했습니다. 이미 있던 계정이면 최신 토큰으로 갱신했습니다.'
           );
-          setModalOpen(false);
+          if (saved) setModalOpen(false);
+          return saved;
         }}
       />
+      </fieldset>
     </main>
   );
 }

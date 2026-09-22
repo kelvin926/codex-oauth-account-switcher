@@ -25,7 +25,7 @@ describe('SummaryBar', () => {
     );
 
     const toggle = screen.getByRole('checkbox', {
-      name: '전환 시 자동 종료·재시작'
+      name: '전환 시 자동 종료 및 재시작'
     });
     expect((toggle as HTMLInputElement).checked).toBe(true);
 
@@ -47,3 +47,4 @@ describe('SummaryBar', () => {
     ]);
   });
 });
+

@@ -23,10 +23,15 @@ export type AccountAuthSource =
 export type UsageSnapshot = {
   fetchedAt: string;
   source: 'fixture' | 'live';
-  primaryRemainingPercent: number;
-  secondaryRemainingPercent: number;
-  primaryResetAt: string;
-  secondaryResetAt: string;
+  primaryRemainingPercent: number | null;
+  secondaryRemainingPercent: number | null;
+  primaryResetAt: string | null;
+  secondaryResetAt: string | null;
+  // Missing duration fields identify legacy snapshots. Explicit null means unknown.
+  primaryWindowSeconds?: number | null;
+  secondaryWindowSeconds?: number | null;
+  allowed?: boolean;
+  limitReached?: boolean;
 };
 
 export type AccountRecord = {
@@ -50,9 +55,9 @@ export type SecretBox = {
 
 export type AuthAdapter = {
   readCurrentAuth(): Promise<string>;
-  backupCurrentAuth(): Promise<string>;
+  backupCurrentAuth(): Promise<string | null>;
   writeBundle(bundle: string): Promise<void>;
-  restoreBackup(backupPath: string): Promise<void>;
+  restoreBackup(backupPath: string | null): Promise<void>;
 };
 
 export type RestartVerificationState = {

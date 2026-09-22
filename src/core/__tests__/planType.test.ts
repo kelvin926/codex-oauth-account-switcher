@@ -22,8 +22,9 @@ describe('planType', () => {
   it('keeps official labels and updated recommendation multipliers available', () => {
     expect(PLAN_LABELS['pro-5x']).toBe('프로 5x');
     expect(PLAN_LABELS['pro-20x']).toBe('프로 20x');
-    expect(PLAN_CAPACITY_MULTIPLIER['pro-5x']).toBe(10);
+    expect(PLAN_CAPACITY_MULTIPLIER['pro-5x']).toBe(5);
     expect(PLAN_CAPACITY_MULTIPLIER['pro-20x']).toBe(20);
-    expect(PLAN_CAPACITY_MULTIPLIER['business-codex']).toBe(100);
+    expect(PLAN_CAPACITY_MULTIPLIER['business-codex']).toBe(1);
   });
 });
+

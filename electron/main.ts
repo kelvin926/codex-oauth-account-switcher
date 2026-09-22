@@ -65,6 +65,13 @@ const authAdapter = new AuthFileAdapter(codexAuthPath, backupAuthRoot, secretBox
 const execFileAsync = promisify(execFile);
 let operationQueue: Promise<void> = Promise.resolve();
 
+async function runPowerShell(script: string, timeout = 20_000) {
+  return execFileAsync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-EncodedCommand',
+    Buffer.from(script, 'utf16le').toString('base64')
+  ], { windowsHide: true, timeout, maxBuffer: 1024 * 1024 });
+}
+
 type PendingRegistrationSession = {
   mode: 'codex-login';
   startedAt: string;
@@ -217,35 +224,21 @@ async function saveAccounts(accounts: AccountRecord[]): Promise<void> {
 }
 
 async function getCodexWindowRuntime(): Promise<CodexWindowRuntime> {
-  const { stdout } = await execFileAsync('powershell.exe', [
-    '-NoProfile',
-    '-Command',
-    buildCodexRuntimeScript()
-  ]);
+  const { stdout } = await runPowerShell(buildCodexRuntimeScript());
 
   return JSON.parse(stdout.trim()) as CodexWindowRuntime;
 }
 
 async function stopCodexStack(): Promise<void> {
   try {
-    await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      buildCodexTerminationScript()
-    ]);
+    await runPowerShell(buildCodexTerminationScript(), 30_000);
   } catch (error) {
     throw new Error(toCodexTerminationErrorMessage(error));
   }
 }
 
 async function launchCodex(): Promise<void> {
-  await execFileAsync('powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    buildCodexLaunchScript()
-  ]);
+  await runPowerShell(buildCodexLaunchScript(), 30_000);
 }
 
 async function clearStaleRegistrationSession(): Promise<void> {
@@ -260,7 +253,9 @@ async function clearStaleRegistrationSession(): Promise<void> {
 }
 
 async function synchronizeStateWithRuntime(state: DesktopState): Promise<DesktopState> {
-  const codexRuntime = await getCodexWindowRuntime();
+  const codexRuntime = state.pendingVerificationAccountId
+    ? await getCodexWindowRuntime()
+    : { isOpen: false, processCount: 0, latestStartTime: null };
   const nextState: DesktopState = {
     ...state,
     registration: null
@@ -338,9 +333,12 @@ async function buildDashboard(): Promise<DashboardPayload> {
       }
     })
   );
-  await saveAccounts(normalizedAccounts);
-  const state = await synchronizeStateWithRuntime(await loadState());
-  await saveState(state);
+  if (JSON.stringify(normalizedAccounts) !== JSON.stringify(accounts)) {
+    await saveAccounts(normalizedAccounts);
+  }
+  const previousState = await loadState();
+  const state = await synchronizeStateWithRuntime(previousState);
+  if (JSON.stringify(state) !== JSON.stringify(previousState)) await saveState(state);
   return {
     accounts: normalizedAccounts,
     state
@@ -348,26 +346,36 @@ async function buildDashboard(): Promise<DashboardPayload> {
 }
 
 async function refreshUsage(account: AccountRecord): Promise<AccountRecord> {
-  const bundle = await sessionVault.load(account.bundlePath);
+  let bundle: string | null = null;
+  try {
+    const liveAuth = await authAdapter.readCurrentAuth();
+    if (parseAuthBundle(liveAuth).accountId === account.id) bundle = liveAuth;
+  } catch {
+    // The active auth may be absent during official logout. Saved accounts remain usable.
+  }
+  if (bundle !== null && getAuthBundleSwitchability(bundle).canSwitch) {
+    await sessionVault.save(account.id, bundle);
+  }
+  bundle ??= await sessionVault.load(account.bundlePath);
   const switchability = getAuthBundleSwitchability(bundle);
   if (isAuthBundleExpired(bundle)) {
     return {
       ...account,
       canSwitch: switchability.canSwitch,
       switchBlockedReason: switchability.reason,
-      status: 'expired',
+      status: switchability.canSwitch ? 'needs-refresh' : 'expired',
       updatedAt: new Date().toISOString()
     };
   }
 
   const parsed = parseAuthBundle(bundle);
-  const usage = await fetchUsageFromAccessToken(parsed.accessToken);
+  const usage = await fetchUsageFromAccessToken(parsed.accessToken, parsed.accountId);
 
   return {
     ...account,
     canSwitch: switchability.canSwitch,
     switchBlockedReason: switchability.reason,
-    planType: usage.planType,
+    planType: usage.planType === 'unknown' ? parsed.planType : usage.planType,
     usage: usage.usage,
     status: 'ready',
     updatedAt: new Date().toISOString()
@@ -447,7 +455,7 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
     | null = null;
 
   try {
-    usageResult = await fetchUsageFromAccessToken(parsed.accessToken);
+    usageResult = await fetchUsageFromAccessToken(parsed.accessToken, parsed.accountId);
   } catch {
     usageResult = null;
   }
@@ -462,7 +470,7 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
     canSwitch: switchability.canSwitch,
     switchBlockedReason: switchability.reason,
     status: usageResult ? 'ready' : 'needs-refresh',
-    planType: usageResult?.planType ?? parsed.planType,
+    planType: usageResult && usageResult.planType !== 'unknown' ? usageResult.planType : parsed.planType,
     usage: usageResult?.usage ?? null,
     createdAt: existingAccount?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -511,6 +519,9 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
   }
 
   const bundle = await sessionVault.load(target.bundlePath);
+  if (parseAuthBundle(bundle).accountId !== accountId) {
+    throw new Error('저장된 인증의 계정이 선택한 계정과 다릅니다. 인증을 다시 저장해 주세요.');
+  }
   const switchability = getAuthBundleSwitchability(bundle);
   if (target.authSource !== 'codex-auth-file' || !switchability.canSwitch) {
     throw new Error(
@@ -541,14 +552,6 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
   }
 
   try {
-    const latestAuth = await authAdapter.readCurrentAuth();
-    const checkpointedAccounts = await checkpointCurrentAccount(
-      accounts,
-      latestAuth,
-      (currentAccountId, payload) => sessionVault.save(currentAccountId, payload)
-    );
-    await saveAccounts(checkpointedAccounts);
-
     const runtimeBeforeSwap = await getCodexWindowRuntime();
     const recheckedExecutionPlan = createSwitchExecutionPlan(
       currentState.autoRestartOnSwitch,
@@ -556,6 +559,21 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
     );
     if (runtimeBeforeSwap.isOpen && recheckedExecutionPlan.shouldStop) {
       await stopCodexStack();
+    }
+
+    // Checkpoint only after the final shutdown; a respawned app may rotate tokens.
+    let latestAuth: string | null = null;
+    try {
+      latestAuth = await authAdapter.readCurrentAuth();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    if (latestAuth !== null) {
+      const checkpointedAccounts = await checkpointCurrentAccount(
+        accounts, latestAuth,
+        (currentAccountId, payload) => sessionVault.save(currentAccountId, payload)
+      );
+      await saveAccounts(checkpointedAccounts);
     }
 
     await switchAccount(target, bundle, authAdapter, {
@@ -617,7 +635,7 @@ async function terminateCodex(): Promise<DashboardPayload> {
 
 async function setAutoRestartOnSwitch(enabled: boolean): Promise<DashboardPayload> {
   if (typeof enabled !== 'boolean') {
-    throw new Error('자동 종료·재시작 설정 값이 올바르지 않습니다.');
+    throw new Error('자동 종료 및 재시작 설정 값이 올바르지 않습니다.');
   }
 
   const state = await loadState();
@@ -708,38 +726,49 @@ function createMainWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(() => {
-  Menu.setApplicationMenu(null);
-  ipcMain.handle('dashboard:get', () => serializeOperation(buildDashboard));
-  ipcMain.handle('account:refresh-all', () => serializeOperation(refreshAll));
-  ipcMain.handle('account:refresh', (_event, accountId: string) =>
-    serializeOperation(() => refreshAccount(accountId))
-  );
-  ipcMain.handle('account:delete', (_event, accountId: string) =>
-    serializeOperation(() => deleteAccount(accountId))
-  );
-  ipcMain.handle('account:capture-current-auth', (_event, input: CaptureAccountInput) =>
-    serializeOperation(() => captureCurrentAuth(input))
-  );
-  ipcMain.handle('account:switch', (_event, accountId: string) =>
-    serializeOperation(() => switchSelectedAccount(accountId))
-  );
-  ipcMain.handle('account:switch-recommended', () =>
-    serializeOperation(switchRecommendedAccount)
-  );
-  ipcMain.handle('settings:set-auto-restart-on-switch', (_event, enabled: boolean) =>
-    serializeOperation(() => setAutoRestartOnSwitch(enabled))
-  );
-  ipcMain.handle('codex:terminate', () => serializeOperation(terminateCodex));
-
-  createMainWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
+const hasInstanceLock = app.requestSingleInstanceLock();
+if (!hasInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window?.isMinimized()) window.restore();
+    window?.show();
+    window?.focus();
   });
-});
+  app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+    ipcMain.handle('dashboard:get', () => serializeOperation(buildDashboard));
+    ipcMain.handle('account:refresh-all', () => serializeOperation(refreshAll));
+    ipcMain.handle('account:refresh', (_event, accountId: string) =>
+      serializeOperation(() => refreshAccount(accountId))
+    );
+    ipcMain.handle('account:delete', (_event, accountId: string) =>
+      serializeOperation(() => deleteAccount(accountId))
+    );
+    ipcMain.handle('account:capture-current-auth', (_event, input: CaptureAccountInput) =>
+      serializeOperation(() => captureCurrentAuth(input))
+    );
+    ipcMain.handle('account:switch', (_event, accountId: string) =>
+      serializeOperation(() => switchSelectedAccount(accountId))
+    );
+    ipcMain.handle('account:switch-recommended', () =>
+      serializeOperation(switchRecommendedAccount)
+    );
+    ipcMain.handle('settings:set-auto-restart-on-switch', (_event, enabled: boolean) =>
+      serializeOperation(() => setAutoRestartOnSwitch(enabled))
+    );
+    ipcMain.handle('codex:terminate', () => serializeOperation(terminateCodex));
+
+    createMainWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

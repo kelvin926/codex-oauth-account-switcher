@@ -21,6 +21,7 @@ describe('auth file adapter', () => {
 
     const adapter = new AuthFileAdapter(authPath, backupRoot);
     const backupPath = await adapter.backupCurrentAuth();
+    if (backupPath === null) throw new Error('Expected an existing auth backup');
     await adapter.writeBundle(JSON.stringify({ account_id: 'new' }));
 
     await expect(readFile(authPath, 'utf8')).resolves.toContain('"new"');
@@ -41,6 +42,7 @@ describe('auth file adapter', () => {
 
     const adapter = new AuthFileAdapter(authPath, join(root, 'backups'), reverseSecretBox);
     const backupPath = await adapter.backupCurrentAuth();
+    if (backupPath === null) throw new Error('Expected an existing auth backup');
     const stored = await readFile(backupPath, 'utf8');
 
     expect(backupPath).toMatch(/\.bundle$/);
@@ -49,5 +51,20 @@ describe('auth file adapter', () => {
     await adapter.writeBundle(JSON.stringify({ token: 'new' }));
     await adapter.restoreBackup(backupPath);
     await expect(readFile(authPath, 'utf8')).resolves.toBe(rawAuth);
+  });
+
+  it('restores an originally logged-out state by removing the new auth file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'auth-logged-out-test-'));
+    const authPath = join(root, 'codex', 'auth.json');
+    const adapter = new AuthFileAdapter(authPath, join(root, 'backups'), reverseSecretBox);
+
+    const backupPath = await adapter.backupCurrentAuth();
+    expect(backupPath).toBeNull();
+
+    await adapter.writeBundle(JSON.stringify({ token: 'saved-account' }));
+    await expect(readFile(authPath, 'utf8')).resolves.toContain('saved-account');
+
+    await adapter.restoreBackup(backupPath);
+    await expect(readFile(authPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

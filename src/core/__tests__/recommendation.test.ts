@@ -31,6 +31,24 @@ function createAccount(
 }
 
 describe('recommendation', () => {
+  it('uses the available weekly quota when the primary window is absent', () => {
+    const account = createAccount('weekly-pro', 0, 75, 'pro-20x');
+    account.usage!.primaryRemainingPercent = null;
+    account.usage!.primaryResetAt = null;
+    expect(computeEffectiveRemaining(account)).toBe(1500);
+    expect(chooseRecommendedAccount([account])?.id).toBe(account.id);
+  });
+
+  it('does not recommend exhausted, unknown, blocked, or failed usage', () => {
+    const blocked = createAccount('blocked', 80, 80);
+    blocked.usage!.allowed = false;
+    expect(chooseRecommendedAccount([
+      createAccount('exhausted', 0, 90),
+      { ...createAccount('unknown', 0, 0), usage: null },
+      { ...createAccount('failed', 90, 90), status: 'needs-refresh' },
+      blocked
+    ])).toBeNull();
+  });
   beforeAll(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-08T00:00:00.000Z'));
@@ -47,7 +65,7 @@ describe('recommendation', () => {
 
   it('gives pro accounts a higher recommendation weight for the same remaining percent', () => {
     expect(computeEffectiveRemaining(createAccount('plus', 50, 50, 'plus'))).toBe(50);
-    expect(computeEffectiveRemaining(createAccount('pro', 50, 50, 'pro-5x'))).toBe(500);
+    expect(computeEffectiveRemaining(createAccount('pro', 50, 50, 'pro-5x'))).toBe(250);
   });
 
   it('chooses the account with the highest effective remaining capacity', () => {

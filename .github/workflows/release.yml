@@ -3,47 +3,83 @@ name: Release
 on:
   workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
 
 permissions:
   contents: write
 
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-windows:
     runs-on: windows-latest
-
+    timeout-minutes: 20
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
-
       - name: Lint
         run: npm run lint
-
-      - name: Test
+      - name: Test (including Windows PowerShell and COM compilation)
         run: npm test
-
-      - name: Build README screenshots
-        run: npm run screenshots:capture
-
       - name: Build Windows artifacts
-        run: npm run dist:win
+        run: npm run dist:ci
+      - name: Smoke test the packaged executable
+        run: node scripts/smoke-windows.mjs
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.zip' } |
+            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Set-Content -Encoding utf8 release/SHA256SUMS.txt
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.zip
+            release/SHA256SUMS.txt
+            release/smoke-dashboard.png
 
-      - name: Upload release assets
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Determine release version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne $tag) {
+            throw "Git tag and package version must match"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not check existing releases" }
+          $exists = @($releases | Where-Object { $_.tag_name -eq $tag }).Count -gt 0
+          "publish=$(-not $exists)" >> $env:GITHUB_OUTPUT
+      - name: Publish new version
+        if: steps.version.outputs.publish == 'True'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          body_path: docs/RELEASE_0.3.0.md
+          fail_on_unmatched_files: true
           files: |
-            release/latest.yml
             release/*.exe
-            release/*.blockmap
             release/*.zip
+            release/SHA256SUMS.txt
