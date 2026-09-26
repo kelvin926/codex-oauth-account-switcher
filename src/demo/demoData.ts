@@ -3,7 +3,8 @@ import type { DashboardPayload } from '../shared/desktopApi';
 
 export type DemoScenario = 'empty' | 'populated' | 'switching';
 
-const baseTimestamp = '2026-04-17T12:00:00.000Z';
+const baseTimestamp = new Date().toISOString();
+const afterHours = (hours: number) => new Date(Date.parse(baseTimestamp) + hours * 3600_000).toISOString();
 
 function createAccount(
   id: string,
@@ -25,10 +26,12 @@ function createAccount(
     usage: {
       fetchedAt: baseTimestamp,
       source: 'fixture',
-      primaryRemainingPercent,
+      primaryRemainingPercent: planType === 'pro-5x' ? null : primaryRemainingPercent,
       secondaryRemainingPercent,
-      primaryResetAt: '2026-04-17T16:30:00.000Z',
-      secondaryResetAt: '2026-04-22T23:00:00.000Z',
+      primaryResetAt: planType === 'pro-5x' ? null : afterHours(4.5),
+      secondaryResetAt: afterHours(72),
+      primaryWindowSeconds: planType === 'pro-5x' ? null : 18000,
+      secondaryWindowSeconds: 604800,
       availableResetCredits: id === 'demo-recommended' ? 3 : 0,
       credits: {
         balance: id === 'demo-recommended' ? 1234.56 : 0,
@@ -89,7 +92,7 @@ export function getDemoDashboard(scenario: DemoScenario): DashboardPayload {
         pendingVerificationAccountId: 'demo-recommended',
         pendingVerificationSawStop: true,
         autoRestartOnSwitch: true,
-        lastSwitchAt: '2026-04-17T12:04:00.000Z',
+        lastSwitchAt: baseTimestamp,
         registration: null
       }
     };

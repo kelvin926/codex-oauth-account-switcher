@@ -2,7 +2,9 @@
 
 Windows용 ChatGPT/Codex에서 여러 ChatGPT 계정의 인증을 안전하게 저장하고 전환하는 데스크톱 앱입니다.
 
-v0.4.0은 탐색기를 경유하지 않는 Windows 앱 재실행, 서버 응답에 따른 사용량 표시, 중복 전환 방지를 제공합니다. 계정 전환 시 공용 Codex 홈은 유지하고 `auth.json`만 교체합니다.
+v0.5.0은 Liquid Glass에서 영감을 받은 반투명 패널과 캡슐형 탭, 잔여량 막대를 적용했습니다. Windows용 Electron UI로 구현하며 계정 전환과 사용량 분석 기능을 유지합니다. 탐색기를 경유하지 않는 Windows 앱 재실행, 서버 응답에 따른 사용량 표시, 중복 전환 방지도 제공합니다. 계정 전환 시 공용 Codex 홈은 유지하고 `auth.json`만 교체합니다.
+
+[v0.5.0 UI 변경 안내](docs/RELEASE_0.5.0.md)
 
 ## 화면 예시
 
@@ -12,21 +14,21 @@ Windows 실행 화면의 데모 캡처입니다. 계정, 날짜, 사용량과 �
 
 계정별 잔여량, 초기화 시각, 초기화권과 크레딧을 확인하고 계정을 전환합니다.
 
-![계정 관리 데모 화면](docs/media/v0.4.0/accounts.png)
+![계정 관리 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.5.0/smoke-dashboard.png)
 
 ### 사용량 분석
 
 기간, 집계 단위, 계정, 모델과 리즈닝을 선택해 토큰을 조회합니다. 모델별 주간 소모율은 추정값이며, 관측 자료가 없으면 확인 불가로 표시합니다.
 
-![사용량 분석 데모 화면](docs/media/v0.4.0/usage-analytics.png)
+![사용량 분석 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.5.0/smoke-analytics.png)
 
 ### 초기화 예상과 소식
 
 Lunarwerx의 24시간 및 단기 예상 확률, 추정 범위와 초기화 통계를 표시합니다. 화면 아래 기록에서 Tibo 공지와 원문 링크를 확인할 수 있습니다.
 
-![초기화 예상과 소식 데모 화면](docs/media/v0.4.0/reset-forecast.png)
+![초기화 예상과 소식 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.5.0/smoke-forecast.png)
 
-## v0.4.0 주요 변경
+## 주요 기능
 
 - **사용량 분석**: 모델, 리즈닝, 입력/캐시/출력/추론 토큰을 기간별, 날짜별, 시간별로 보고 CSV로 내보냅니다.
 - **주간 한도와 크레딧 이력**: 서버 관측값을 보관하고 제한된 관측 구간에서 모델별 주간 소모를 추정합니다. 정확한 모델별 과금률은 아닙니다. 로컬 로그에 없는 사용량과 계정을 확인하지 못한 과거 기록은 임의 배정하지 않습니다.
@@ -61,8 +63,8 @@ Lunarwerx의 24시간 및 단기 예상 확률, 추정 범위와 초기화 통�
 
 [GitHub Releases](https://github.com/kelvin926/codex-oauth-account-switcher/releases/latest)에서 다음 중 하나를 받습니다.
 
-- `OAuth Account Switcher-0.4.0-x64.exe`: 설치 프로그램
-- `OAuth Account Switcher-0.4.0-x64.zip`: 포터블 패키지
+- `OAuth.Account.Switcher-0.5.0-x64.exe`: 설치 프로그램
+- `OAuth.Account.Switcher-0.5.0-x64.zip`: 포터블 패키지
 
 기존 v0.1.x 위에 설치해도 `%USERPROFILE%\.oauth-account-switcher` 데이터는 그대로 사용합니다.
 
@@ -139,6 +141,6 @@ npm run dist:win
 
 테스트에는 JSON 손상 복구, 계정 카탈로그 재구성, refresh token 체크포인트, 전환 롤백, ChatGPT/Codex 프로세스 스크립트, 채팅 및 설정 파일 불변성 검증이 포함됩니다.
 
-자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.4.0.md](docs/RELEASE_0.4.0.md)를 참고하세요.
+자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 최신 변경 내역은 [docs/RELEASE_0.5.0.md](docs/RELEASE_0.5.0.md)를 참고하세요.
 
 `초기화 소식`에서는 [Lunarwerx Codex Forecast](https://codex.lunarwerx.com/)의 초기화 예상 확률과 범위, 초기화 이력, 이력에 연결된 Tibo 공지를 볼 수 있습니다. 5분 간격으로 갱신하며 새 기록, 공지, 예상 확률 상승 시 Windows 알림을 제공합니다. 제3자의 예상이며 내 계정의 초기화나 잔여 크레딧을 보장하지 않습니다. 데이터가 오래되거나 연결이 끊기면 마지막 정상 기록과 경고를 표시합니다. 이 공개 데이터 연결에는 계정 인증을 보내지 않습니다.

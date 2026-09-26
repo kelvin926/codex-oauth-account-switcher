@@ -11,6 +11,7 @@ import { getDemoDashboard, readDemoScenario } from './demo/demoData';
 import { AnalyticsPanel } from './features/analytics/AnalyticsPanel';
 import { ToolsPanel } from './features/tools/ToolsPanel';
 import { ForecastPanel } from './features/forecast/ForecastPanel';
+import { Icon } from './shared/Icon';
 import type { FeatureState } from './shared/features';
 
 type AsyncStatus = {
@@ -192,7 +193,17 @@ export default function App() {
 
   return (
     <main className="app-shell" aria-busy={busy}>
+      <header className="workspace-header">
+        <div className="app-brand"><span className="brand-mark" aria-hidden="true"><Icon name="accounts"/></span><div><p className="eyebrow">Codex Account Switcher</p><h1>계정과 사용량</h1></div></div>
+        <span className="workspace-badge"><span aria-hidden="true" className="status-dot"/>{isDemoMode?'데모 미리보기':`저장된 계정 ${dashboard.accounts.length}개`}</span>
+      </header>
       <fieldset className="dashboard-controls" disabled={busy}>
+      <nav className="app-tabs" aria-label="보기 선택">
+        <button className={tab==='accounts'?'selected':''} aria-pressed={tab==='accounts'} onClick={()=>setTab('accounts')}><Icon name="accounts"/>계정</button>
+        <button className={tab==='analytics'?'selected':''} aria-pressed={tab==='analytics'} onClick={()=>setTab('analytics')}><Icon name="analytics"/>사용량 분석</button>
+        <button className={tab==='forecast'?'selected':''} aria-pressed={tab==='forecast'} onClick={()=>setTab('forecast')}><Icon name="forecast"/>초기화 소식</button>
+        <button className={tab==='tools'?'selected':''} aria-pressed={tab==='tools'} onClick={()=>setTab('tools')}><Icon name="tools"/>설정과 진단</button>
+      </nav>
       <SummaryBar
         activeLabel={activeAccount?.label ?? '로그인 확인 필요'}
         recommendedLabel={recommended?.label ?? '추천 가능한 계정 없음'}
@@ -229,17 +240,12 @@ export default function App() {
         onAddAccount={() => {setReauthId(undefined);setModalOpen(true);}}
       />
 
-      <section className={`status-banner ${status.kind}`}>
+      <section className={`status-banner ${status.kind}`} role={status.kind==='error'?'alert':'status'}>
+        <Icon name={status.kind==='success'?'check':'info'}/>
         <strong>{status.kind === 'error' ? '오류' : '안내'}</strong>
         <span>{bannerMessage}</span>
       </section>
 
-      <nav className="app-tabs" aria-label="보기 선택">
-        <button className={tab==='accounts'?'selected':''} onClick={()=>setTab('accounts')}>계정</button>
-        <button className={tab==='analytics'?'selected':''} onClick={()=>setTab('analytics')}>사용량 분석</button>
-        <button className={tab==='forecast'?'selected':''} onClick={()=>setTab('forecast')}>초기화 소식</button>
-        <button className={tab==='tools'?'selected':''} onClick={()=>setTab('tools')}>설정과 진단</button>
-      </nav>
       {tab==='analytics' && <AnalyticsPanel accounts={dashboard.accounts} demo={isDemoMode}/>}
       {tab==='forecast' && <ForecastPanel demo={isDemoMode}/>}
       {tab==='tools' && <ToolsPanel demo={isDemoMode} onChanged={reloadDashboard}/>}

@@ -1,3 +1,5 @@
+import { Icon } from '../../../shared/Icon';
+
 type SummaryBarProps = {
   activeLabel: string;
   recommendedLabel: string;
@@ -13,7 +15,7 @@ type SummaryBarProps = {
 export function SummaryBar(props: SummaryBarProps) {
   return (
     <section className="summary-bar">
-      <div className="summary-cell">
+      <div className="summary-cell current-summary">
         <p className="eyebrow">현재 계정</p>
         <strong>{props.activeLabel}</strong>
       </div>
@@ -36,8 +38,8 @@ export function SummaryBar(props: SummaryBarProps) {
             <strong>전환 시 자동 종료 및 재시작</strong>
             <small>
               {props.autoRestartOnSwitch
-                ? '켜짐  및  계정 전환 후 앱을 자동으로 다시 엽니다.'
-                : '꺼짐  및  빨간 종료 버튼을 먼저 누른 뒤 직접 실행합니다.'}
+                ? '계정 전환 후 앱을 자동으로 다시 엽니다.'
+                : '앱을 종료한 뒤 전환하고 직접 실행합니다.'}
             </small>
           </span>
         </label>
@@ -47,20 +49,19 @@ export function SummaryBar(props: SummaryBarProps) {
             onClick={props.onSwitchRecommended}
             disabled={props.recommendedDisabled}
           >
-            추천으로 전환
+            <Icon name="switch"/>추천으로 전환
           </button>
           <button className="secondary-button" onClick={props.onRefreshAll}>
-            전체 갱신
+            <Icon name="refresh"/>전체 갱신
           </button>
           <button className="danger-button" onClick={props.onTerminateCodex}>
-            ChatGPT/Codex 종료
+            <Icon name="power"/>ChatGPT/Codex 종료
           </button>
           <button className="primary-button" onClick={props.onAddAccount}>
-            계정 추가
+            <Icon name="plus"/>계정 추가
           </button>
         </div>
       </div>
     </section>
   );
 }
-

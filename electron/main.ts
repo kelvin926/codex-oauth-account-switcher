@@ -776,7 +776,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 1080,
     minHeight: 760,
     title: 'Codex 계정 전환기',
-    backgroundColor: '#f4f1ea',
+    backgroundColor: '#edf3fc',
     autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,
@@ -809,7 +809,7 @@ function createMainWindow(): BrowserWindow {
         })`);
         logLine('renderer-snapshot', snapshot);
         // DOM readiness precedes Chromium's first painted frame on Windows runners.
-        const section = tab === 'analytics' ? '.analysis-filters' : tab === 'forecast' ? '.forecast-panel' : '.card-grid';
+        const section = tab === 'analytics' ? '.analysis-filters' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
         await window.webContents.executeJavaScript(`(async () => {
           if (${JSON.stringify(!!tab)}) document.querySelector(${JSON.stringify(section)})?.scrollIntoView({block:'start'});
           await Promise.race([document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise(resolve => setTimeout(resolve, 1000))]);

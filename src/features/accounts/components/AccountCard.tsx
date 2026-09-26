@@ -1,5 +1,6 @@
 import { AccountExtras } from './AccountExtras';
 import { Fragment } from 'react';
+import { Icon } from '../../../shared/Icon';
 import { formatWindowLabel, getUsageWindows } from '../../../core/usageWindows';
 import { PLAN_LABELS } from '../../../shared/desktopApi';
 import type { AccountRecord } from '../../../core/types';
@@ -33,22 +34,26 @@ export function AccountCard(props: AccountCardProps) {
   const windows = getUsageWindows(account.usage);
 
   return (
-    <article className="account-card">
+    <article className="account-card" data-active={props.state.activeAccountId===account.id} data-recommended={props.recommendedId===account.id}>
       <div className="card-header">
-        <div>
+        <div className="account-identity">
+          <span className="account-avatar" aria-hidden="true">{account.label.trim().slice(0,1)}</span>
+          <div>
           <p className="eyebrow">{PLAN_LABELS[account.planType]}</p>
           <h3>{account.label}</h3>
+          </div>
         </div>
         <span className="badge">{badge}</span>
       </div>
       <dl className="metric-grid">
         {windows.map((window) => (
           <Fragment key={window.key}>
-            <div>
+            <div className="quota-metric">
               <dt>{formatWindowLabel(window.seconds, window.key)} 남은 양</dt>
               <dd>{formatRemaining(window.remaining)}</dd>
+              <dd className="quota-meter"><progress aria-label={`${account.label} ${formatWindowLabel(window.seconds, window.key)} 남은 양`} max="100" value={Math.max(0,Math.min(100,window.remaining))} data-low={window.remaining<=20}/></dd>
             </div>
-            <div>
+            <div className="reset-metric">
               <dt>{formatWindowLabel(window.seconds, window.key)} 초기화</dt>
               <dd className="metric-value-compact">{formatResetTimestamp(window.resetAt)}</dd>
             </div>
@@ -93,7 +98,7 @@ export function AccountCard(props: AccountCardProps) {
       {account.excluded && <p className="card-note">추천에서 제외된 계정입니다. 수동 전환은 가능합니다.</p>}
       <div className="card-actions">
         <button className="secondary-button" onClick={props.onRefresh}>
-          갱신
+          <Icon name="refresh"/>갱신
         </button>
         <button className="ghost-button" onClick={props.onDelete}>
           삭제

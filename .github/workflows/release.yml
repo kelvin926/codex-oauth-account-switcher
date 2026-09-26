@@ -98,3 +98,4 @@ jobs:
             release/*.exe
             release/*.zip
             release/SHA256SUMS.txt
+            release/smoke-*.png
