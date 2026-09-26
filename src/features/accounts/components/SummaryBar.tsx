@@ -24,7 +24,7 @@ export function SummaryBar(props: SummaryBarProps) {
         <strong>{props.recommendedLabel}</strong>
       </div>
       <div className="summary-actions">
-        <label className="auto-restart-toggle">
+        <label className="auto-restart-toggle" title="전환 시 실행 중인 ChatGPT/Codex를 종료하고 다시 엽니다. 진행 중인 작업을 먼저 마무리하세요.">
           <input
             type="checkbox"
             checked={props.autoRestartOnSwitch}
@@ -35,12 +35,8 @@ export function SummaryBar(props: SummaryBarProps) {
             <span className="auto-restart-thumb" />
           </span>
           <span className="auto-restart-copy">
-            <strong>전환 시 자동 종료 및 재시작</strong>
-            <small>
-              {props.autoRestartOnSwitch
-                ? '계정 전환 후 앱을 자동으로 다시 엽니다.'
-                : '앱을 종료한 뒤 전환하고 직접 실행합니다.'}
-            </small>
+            <strong>전환 후 자동 재시작</strong>
+
           </span>
         </label>
         <div className="summary-action-row">

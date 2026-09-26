@@ -75,7 +75,8 @@ export function AccountCard(props: AccountCardProps) {
           <dt>남은 크레딧</dt>
           <dd className="metric-value-compact">{formatCreditBalance(account.usage?.credits)}</dd>
         </div>
-        <div>
+      </dl>
+      <details className="account-metadata"><summary>계정 정보</summary><dl className="metric-grid">        <div>
           <dt>추천 점수</dt>
           <dd>{getAccountScore(account)}</dd>
         </div>
@@ -85,7 +86,7 @@ export function AccountCard(props: AccountCardProps) {
             {formatTimestamp(account.usage?.fetchedAt ?? account.updatedAt)}
           </dd>
         </div>
-      </dl>
+</dl></details>
       {account.usage?.allowed === false || account.usage?.limitReached ? (
         <p className="card-note">서버에서 사용 한도에 도달한 것으로 표시했습니다.</p>
       ) : null}

@@ -106,7 +106,7 @@ function isPendingRegistrationSession(value: unknown): value is PendingRegistrat
   );
 }
 
-app.disableHardwareAcceleration();
+if (process.env.OAUTH_SWITCHER_DISABLE_GPU === '1') app.disableHardwareAcceleration();
 
 function logLine(...parts: unknown[]) {
   const logDir = path.join(dataRoot, 'logs');
@@ -192,6 +192,7 @@ async function loadState(): Promise<DesktopState> {
 }
 
 function serializeOperation<T>(operation: () => Promise<T>): Promise<T> {
+  if (quitting) return Promise.reject(new Error('앱을 종료하는 중입니다.'));
   const result = operationQueue.then(operation, operation);
   operationQueue = result.then(
     () => undefined,
@@ -777,6 +778,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 760,
     title: 'Codex 계정 전환기',
     backgroundColor: '#edf3fc',
+    show: !(process.argv.includes('--startup') && features?.store.settings.tray),
     autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,
@@ -809,7 +811,7 @@ function createMainWindow(): BrowserWindow {
         })`);
         logLine('renderer-snapshot', snapshot);
         // DOM readiness precedes Chromium's first painted frame on Windows runners.
-        const section = tab === 'analytics' ? '.analysis-filters' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
+        const section = tab === 'analytics' ? '.analytics-stats' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
         await window.webContents.executeJavaScript(`(async () => {
           if (${JSON.stringify(!!tab)}) document.querySelector(${JSON.stringify(section)})?.scrollIntoView({block:'start'});
           await Promise.race([document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise(resolve => setTimeout(resolve, 1000))]);
@@ -872,6 +874,7 @@ if (!hasInstanceLock) {
     window?.focus();
   });
   app.whenReady().then(async () => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.codex.oauth-account-switcher');
     if (!demoScenario) {
       await ensureDataRoot();
       await rm(path.join(dataRoot, 'login-staging'), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
@@ -922,7 +925,16 @@ if (!hasInstanceLock) {
   });
 }
 
-app.on('before-quit', () => { quitting = true; void features?.dispose(); });
+let disposalPending = false;
+let disposalComplete = false;
+app.on('before-quit', (event) => {
+  quitting = true;
+  if (!features || disposalComplete) return;
+  event.preventDefault();
+  if (disposalPending) return;
+  disposalPending = true;
+  void operationQueue.then(() => features?.dispose()).catch(error => logLine('shutdown-save-error',String(error))).finally(() => { disposalComplete = true; app.quit(); });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

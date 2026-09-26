@@ -1,6 +1,6 @@
 export type RecommendationStrategy = 'remaining' | 'reset-first' | 'priority';
-export type FeatureSettings = { tray: boolean; refreshMinutes: number; notifications: boolean; lowRemaining: number; strategy: RecommendationStrategy; forecastEnabled: boolean; forecastNotifications: boolean; forecastThreshold: number };
-export const DEFAULT_SETTINGS: FeatureSettings = { tray: true, refreshMinutes: 5, notifications: true, lowRemaining: 20, strategy: 'remaining', forecastEnabled: true, forecastNotifications: true, forecastThreshold: 70 };
+export type FeatureSettings = { startAtLogin: boolean; tray: boolean; refreshMinutes: number; notifications: boolean; weeklyResetNotifications: boolean; lowRemaining: number; strategy: RecommendationStrategy; forecastEnabled: boolean; forecastNotifications: boolean; forecastThreshold: number };
+export const DEFAULT_SETTINGS: FeatureSettings = { startAtLogin: true, tray: true, refreshMinutes: 5, notifications: true, weeklyResetNotifications: true, lowRemaining: 20, strategy: 'remaining', forecastEnabled: true, forecastNotifications: true, forecastThreshold: 70 };
 export type OperationRecord = { at: string; accountId: string | null; stage: string; ok: boolean; message: string };
 export type LoginState = { status: 'idle' | 'starting' | 'waiting' | 'complete' | 'error'; message: string; url?: string; code?: string };
 export type FeatureState = { settings: FeatureSettings; progress: string | null; operations: OperationRecord[]; login: LoginState };
@@ -8,15 +8,18 @@ export type ResetCredit = { id: string; title: string | null; expiresAt: string 
 export type ResetDetails = { available: number | null; credits: ResetCredit[]; pending: boolean; message?: string };
 export type Diagnostic = { name: string; ok: boolean; detail: string };
 export type TokenCounts = { input: number; cached: number; cacheWrite: number; output: number; reasoning: number; total: number };
-export type UsageEvent = TokenCounts & { id: string; at: string; session: string; turn: string; model: string; effort: string; provider: string; accountId: string | null; attribution: 'unknown' | 'observed-login' };
+export type UsageEvent = TokenCounts & { id: string; at: string; session: string; turn: string; model: string; effort: string; provider: string; accountId: string | null; attribution: 'unknown' | 'observed-login'; cacheKnown?: boolean; cacheWriteKnown?: boolean };
 export type QuotaObservation = { at: string; accountId: string; weeklyUsed: number | null; resetAt: string | null; credits: number | null };
 export type AnalyticsQuery = { start: string; end: string; bucket: 'hour' | 'day' | 'week' | 'month'; accountId?: string; model?: string; effort?: string; page?: number };
-export type AnalyticsRow = TokenCounts & { key: string; count: number; weeklyEstimate: number | null };
+export type CostSummary = { usd: number; cacheSavingsUsd: number; pricedEvents: number; unpricedEvents: number; assumedWriteEvents: number; cacheKnownInput: number; cacheKnownRead: number; cacheUnknownEvents: number };
+export type WeeklyBudget = { limitUsd: number | null; usedUsd: number | null; remainingUsd: number | null; usedPercent: number | null; observedPercent: number; intervals: number; at: string | null; resetAt: string | null };
+export type AnalyticsRow = TokenCounts & { key: string; count: number; weeklyEstimate: number | null; cost: CostSummary };
 export type AnalyticsResult = {
   total: AnalyticsRow; timeline: AnalyticsRow[]; dimensions: AnalyticsRow[];
   events: (UsageEvent & { weeklyEstimate: number | null })[]; eventCount: number;
   observations: QuotaObservation[]; models: string[]; efforts: string[];
   scannedAt: string | null; files: number; pendingFiles: number; warnings: string[]; unknownEvents: number;
+  weeklyBudget: WeeklyBudget;
 };
 export type FeatureApi = {
   getForecast(refresh?: boolean): Promise<import('./forecast').ForecastState>;

@@ -12,10 +12,11 @@ export function counts(raw: any): TokenCounts | null {
   if (!raw || !Number.isSafeInteger(raw.total_tokens) || raw.total_tokens < 0) return null;
   const result = emptyCounts();
   for (const [key, wire] of Object.entries({ input: 'input_tokens', cached: 'cached_input_tokens', cacheWrite: 'cache_write_input_tokens', output: 'output_tokens', reasoning: 'reasoning_output_tokens', total: 'total_tokens' })) {
-    const value = raw[wire] ?? 0;
+    const value = raw[wire] ?? (key === 'cached' ? raw.input_tokens_details?.cached_tokens : key === 'cacheWrite' ? raw.input_tokens_details?.cache_write_tokens : undefined) ?? 0;
     if (!Number.isSafeInteger(value) || value < 0) return null;
     result[key as keyof TokenCounts] = value;
   }
+  if (result.cached + result.cacheWrite > result.input || result.reasoning > result.output) return null;
   return result;
 }
 const text = (v: unknown, fallback = '확인 불가') => typeof v === 'string' && v.length <= 300 ? v : fallback;
@@ -64,6 +65,8 @@ export function parseRolloutLine(line: string, state: ParserState): UsageEvent |
   if (delta < last.total) return null;
   return {
     ...last,
+    cacheKnown: p.info.last_token_usage.cached_input_tokens != null || p.info.last_token_usage.input_tokens_details?.cached_tokens != null,
+    cacheWriteKnown: p.info.last_token_usage.cache_write_input_tokens != null || p.info.last_token_usage.input_tokens_details?.cache_write_tokens != null,
     id: `${state.session}:${state.turn}:${timestamp}:${current.total}`,
     at: new Date(timestamp).toISOString(), session: state.session, turn: state.turn,
     model: state.model, effort: state.effort, provider: state.provider,

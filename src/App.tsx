@@ -109,11 +109,11 @@ export default function App() {
     let inFlight = false;
     let cancelled = false;
     const intervalId = window.setInterval(() => {
-      if (actionPendingRef.current || inFlight) return;
+      if (document.hidden || actionPendingRef.current || inFlight) return;
       inFlight = true;
       const version = actionVersionRef.current;
       void window.desktopApi.getDashboard().then((next) => {
-        if (!cancelled && version === actionVersionRef.current) setDashboard(next);
+        if (!cancelled && version === actionVersionRef.current) setDashboard(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next);
       }).catch(() => {
         // Keep the last good state visible during a transient transition.
       }).finally(() => { inFlight = false; });
@@ -136,7 +136,7 @@ export default function App() {
   useEffect(() => {
     if(isDemoMode || !window.desktopApi.getFeatures) return;
     let current=true;
-    const poll=()=>{void window.desktopApi.getFeatures().then(value=>{if(current)setFeatureState(value);}).catch(()=>{});};
+    const poll=()=>{if(document.hidden)return;void window.desktopApi.getFeatures().then(value=>{if(current)setFeatureState(previous=>JSON.stringify(previous)===JSON.stringify(value)?previous:value);}).catch(()=>{});};
     poll();const timer=window.setInterval(poll,1000);
     return()=>{current=false;window.clearInterval(timer);};
   },[isDemoMode]);
@@ -167,7 +167,7 @@ export default function App() {
 
     try {
       const next = await action();
-      setDashboard(next);
+      setDashboard(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next);
       setStatus({ kind: 'success', message: successMessage });
       return true;
     } catch (error) {
@@ -195,7 +195,7 @@ export default function App() {
     <main className="app-shell" aria-busy={busy}>
       <header className="workspace-header">
         <div className="app-brand"><span className="brand-mark" aria-hidden="true"><Icon name="accounts"/></span><div><p className="eyebrow">Codex Account Switcher</p><h1>계정과 사용량</h1></div></div>
-        <span className="workspace-badge"><span aria-hidden="true" className="status-dot"/>{isDemoMode?'데모 미리보기':`저장된 계정 ${dashboard.accounts.length}개`}</span>
+        <span className="workspace-badge"><span aria-hidden="true" className="status-dot"/>{isDemoMode?'데모 미리보기':`${featureState?.settings.refreshMinutes??5}분 자동 갱신`.replace('0분 자동 갱신','자동 갱신 꺼짐')}</span>
       </header>
       <fieldset className="dashboard-controls" disabled={busy}>
       <nav className="app-tabs" aria-label="보기 선택">
@@ -204,7 +204,7 @@ export default function App() {
         <button className={tab==='forecast'?'selected':''} aria-pressed={tab==='forecast'} onClick={()=>setTab('forecast')}><Icon name="forecast"/>초기화 소식</button>
         <button className={tab==='tools'?'selected':''} aria-pressed={tab==='tools'} onClick={()=>setTab('tools')}><Icon name="tools"/>설정과 진단</button>
       </nav>
-      <SummaryBar
+      {tab==='accounts' && <SummaryBar
         activeLabel={activeAccount?.label ?? '로그인 확인 필요'}
         recommendedLabel={recommended?.label ?? '추천 가능한 계정 없음'}
         recommendedDisabled={!recommended || recommended.id === activeAccount?.id}
@@ -238,13 +238,13 @@ export default function App() {
           )
         }
         onAddAccount={() => {setReauthId(undefined);setModalOpen(true);}}
-      />
+      />}
 
-      <section className={`status-banner ${status.kind}`} role={status.kind==='error'?'alert':'status'}>
+      {(busy || featureState?.progress || status.kind!=='idle' || dashboard.state.registration) && <section className={`status-banner ${status.kind}`} role={status.kind==='error'?'alert':'status'}>
         <Icon name={status.kind==='success'?'check':'info'}/>
         <strong>{status.kind === 'error' ? '오류' : '안내'}</strong>
         <span>{bannerMessage}</span>
-      </section>
+      </section>}
 
       {tab==='analytics' && <AnalyticsPanel accounts={dashboard.accounts} demo={isDemoMode}/>}
       {tab==='forecast' && <ForecastPanel demo={isDemoMode}/>}

@@ -5,6 +5,7 @@ import { AnalyticsStore } from '../src/core/analytics/store.js';
 import { analyticsCsv } from '../src/core/analytics/query.js';
 import { FeatureStore, validateSettings } from '../src/core/featureStore.js';
 import { ResetCreditService } from '../src/core/adapters/resetCredits.js';
+import { quotaNotice } from '../src/core/quotaNotifications.js';
 import { getUsageWindows } from '../src/core/usageWindows.js';
 import { parseAuthBundle } from '../src/core/authBundle.js';
 import type { AccountRecord, UsageSnapshot } from '../src/core/types.js';
@@ -34,8 +35,8 @@ export class FeatureRuntime {
   private lastDashboard:DashboardPayload|null=null;
   private timer:ReturnType<typeof setInterval>|null=null;
   private tickPending=false;
+  private disposed=false;
   private lastRefresh=Date.now();
-  private notificationState=new Map<string,{low:boolean;used:number|null;reset:string|null}>();
   progress:string|null=null;
   constructor(private readonly deps:Dependencies){
     this.store=new FeatureStore(path.join(deps.root,'features.json'));
@@ -51,9 +52,32 @@ export class FeatureRuntime {
   }
   async initialize(){
     await this.store.load(); await this.analytics.load(); await this.forecast.load();
+    for (const row of this.analytics.latestQuotaObservations()) if (!this.store.quotaStates[row.accountId]) {
+      this.store.quotaStates[row.accountId] = {at:row.at,weeklyAt:row.at,used:row.weeklyUsed,reset:row.resetAt,low:row.weeklyUsed! >= 100-this.store.settings.lowRemaining};
+    }
+    if (process.platform === 'win32' && app.isPackaged) {
+      if (!this.store.startupConfigured) {
+        try { this.configureStartup(this.store.settings.startAtLogin); this.store.startupConfigured = true; }
+        catch (error) { this.store.settings.startAtLogin = false; await this.store.record(null,'자동 시작',false,error instanceof Error?error.message:'등록 실패'); }
+        await this.store.save();
+      } else {
+        const login = app.getLoginItemSettings({path:process.execPath,args:['--startup']});
+        // Respect an explicit disable in Windows Task Manager.
+        this.store.settings.startAtLogin = login.openAtLogin && login.executableWillLaunchAtLogin;
+      }
+    } else this.store.settings.startAtLogin = false;
     this.configureTray(); this.register();
     this.timer=setInterval(()=>this.tick(),30_000);
     this.tick();
+  }
+  private configureStartup(enabled:boolean) {
+    if (process.platform !== 'win32' || !app.isPackaged) {
+      if (enabled) throw new Error('Windows 설치 버전에서 자동 시작을 사용할 수 있습니다.');
+      return;
+    }
+    app.setLoginItemSettings({openAtLogin:enabled,path:process.execPath,args:['--startup'],name:'CodexOAuthAccountSwitcher',enabled});
+    const actual = app.getLoginItemSettings({path:process.execPath,args:['--startup']});
+    if (enabled && (!actual.openAtLogin || !actual.executableWillLaunchAtLogin)) throw new Error('Windows 자동 시작 등록을 확인하지 못했습니다.');
   }
   state():FeatureState{return {settings:this.store.settings,operations:[...this.store.operations].reverse(),progress:this.progress,login:this.login.state};}
   show(){const window=BrowserWindow.getAllWindows()[0];if(window?.isMinimized())window.restore();window?.show();window?.focus();}
@@ -92,34 +116,37 @@ export class FeatureRuntime {
     try{await this.deps.serialize(()=>this.deps.switchAccount(account.id));}catch(error){await dialog.showMessageBox({type:'error',message:error instanceof Error?error.message:'전환 실패'});}
   }
   private tick(){
+    if(this.disposed)return;
     // Public information must not join the authentication/switch queue.
     void this.forecast.refresh();
     if(this.tickPending)return;this.tickPending=true;
     void this.deps.serialize(async()=>{
+      if(this.disposed)return;
       let id:string|null=null;
       try{id=parseAuthBundle(await readFile(path.join(this.deps.home,'auth.json'),'utf8')).accountId;}catch{/* Unknown login is not assigned. */}
       this.analytics.pulse(id);
-      await this.analytics.scan();
       const minutes=this.store.settings.refreshMinutes;
       const dashboard=minutes>0&&Date.now()-this.lastRefresh>=minutes*60_000
         ?await this.deps.refresh():await this.deps.dashboard();
       if(minutes>0&&Date.now()-this.lastRefresh>=minutes*60_000)this.lastRefresh=Date.now();
       this.updateTray(dashboard);
-    }).catch(()=>{/* Keep the last view. Explicit diagnostics exposes failures. */}).finally(()=>{this.tickPending=false;});
+    }).then(() => { if(!this.disposed)void this.analytics.scan().catch(()=>{}); }).catch(()=>{/* Keep the last view. Explicit diagnostics exposes failures. */}).finally(()=>{this.tickPending=false;});
   }
   async observe(id:string,usage:UsageSnapshot){
     await this.analytics.observe(id,usage);
-    const windows=getUsageWindows(usage);const remaining=windows.length?Math.min(...windows.map(w=>w.remaining)):null;
-    const weekly=windows.find(w=>w.seconds===604800);const previous=this.notificationState.get(id);
-    const low=remaining!==null&&remaining<=this.store.settings.lowRemaining;
-    const reset=weekly?.resetAt??null;const used=weekly?100-weekly.remaining:null;
-    this.notificationState.set(id,{low,used,reset});
-    if(!this.store.settings.notifications||!Notification.isSupported())return;
-    let message:string|null=null;
-    if(low&&!previous?.low)message=`남은 사용량이 ${remaining?.toFixed(0)}%입니다. 눌러서 다른 계정의 잔여량을 확인하세요.`;
-    else if(previous&&used!==null&&previous.used!==null&&used<previous.used&&(reset!==previous.reset||previous.low))message='사용 한도가 복구됐습니다. 눌러서 확인하세요.';
-    if(message){const notice=new Notification({title:'Codex 사용량 알림',body:message});notice.on('click',()=>this.show());notice.show();}
+    const result = quotaNotice(this.store.quotaStates[id],usage,this.store.settings.lowRemaining);
+    if (!result) return;
+    this.store.quotaStates[id] = result.state;
+    // Persist before delivering so the same observation is not replayed after restart.
+    await this.store.save();
+    if (!Notification.isSupported()) return;
+    const label = this.lastDashboard?.accounts.find(a=>a.id===id)?.label ?? '계정 '+id.slice(0,8);
+    let message:string|null = null;
+    if (result.reset && this.store.settings.weeklyResetNotifications) message = `${label}: 주간 사용률이 ${result.before?.toFixed(1)}%에서 ${result.used?.toFixed(1)}%로 줄었습니다. 한도 복구를 감지했습니다.`;
+    else if (result.low && this.store.settings.notifications) message = `${label}: 남은 사용량이 ${result.remaining.toFixed(0)}%입니다.`;
+    if (message) { const notice=new Notification({title:result.reset?'Codex 주간 한도 복구':'Codex 잔여량 알림',body:message});notice.on('click',()=>this.show());notice.show(); }
   }
+
   async switchOperation(id:string,operation:()=>Promise<DashboardPayload>){
     this.progress='대상 인증 확인 중';
     try{const result=await operation();await this.store.record(id,'전환',true,'인증 교체와 실행 단계를 완료했습니다.');this.updateTray(result);return result;}
@@ -131,7 +158,7 @@ export class FeatureRuntime {
     ipcMain.handle('features:get',()=>this.state()); // Must remain responsive while a switch is in progress.
     ipcMain.handle('forecast:get',(_event,refresh:boolean)=>refresh?this.forecast.refresh():this.forecast.state());
     ipcMain.handle('forecast:open',async(_event,value:unknown)=>{const url=forecastLink(value);if(!url)throw new Error('지원하지 않는 출처 링크입니다.');await shell.openExternal(url);});
-    handle('features:settings',async(settings:FeatureSettings)=>{this.store.settings=validateSettings(settings);await this.store.save();this.configureTray();return this.state();});
+    handle('features:settings',async(settings:FeatureSettings)=>{const next=validateSettings(settings);if(next.startAtLogin!==this.store.settings.startAtLogin)this.configureStartup(next.startAtLogin);this.store.settings=next;await this.store.save();this.configureTray();return this.state();});
     handle('features:preference',async(id:string,input:{priority:number;excluded:boolean})=>{
       if(!Number.isInteger(input?.priority)||input.priority< -2||input.priority>2||typeof input.excluded!=='boolean')throw new Error('계정 우선순위 값 오류');
       await this.deps.preference(id,input);
@@ -157,12 +184,12 @@ export class FeatureRuntime {
       if(choice.response===1)await this.deps.recover();
     });
     handle('features:analytics',query=>this.analytics.query(query));
-    handle('features:scan',()=>this.analytics.scan());
+    ipcMain.handle('features:scan',()=>this.analytics.scan());
     handle('features:export',async(query:AnalyticsQuery)=>{
       const result=await this.analytics.query(query);const chosen=await dialog.showSaveDialog({title:'사용량 통계 내보내기',defaultPath:'codex-usage.csv',filters:[{name:'CSV',extensions:['csv']}]});
       if(chosen.canceled||!chosen.filePath)return null;
       await writeFileAtomic(chosen.filePath,analyticsCsv(result));return chosen.filePath;
     });
   }
-  async dispose(){if(this.timer)clearInterval(this.timer);this.tray?.destroy();await this.login.cancel();}
+  async dispose(){this.disposed=true;if(this.timer)clearInterval(this.timer);this.tray?.destroy();await this.login.cancel();await this.analytics.settle();await this.store.save();}
 }

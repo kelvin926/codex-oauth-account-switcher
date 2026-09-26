@@ -12,7 +12,7 @@ type Cursor = { offset: number; size: number; modified: number; skipping: boolea
 type StoredEvent = UsageEvent & { file: string };
 type Database = { version: 1; files: Record<string, Cursor>; events: StoredEvent[]; observations: QuotaObservation[]; spans: AccountSpan[]; truncated: boolean; scannedAt: string | null };
 const blank = (): Database => ({ version: 1, files: {}, events: [], observations: [], spans: [], truncated: false, scannedAt: null });
-const CHUNK = 2 * 1024 * 1024;
+const CHUNK = 512 * 1024;
 const MAX_EVENTS = 250_000;
 
 export class AnalyticsStore {
@@ -22,6 +22,7 @@ export class AnalyticsStore {
   private scanning: Promise<void> | null = null;
   private lastPulse: { at: string; accountId: string | null } | null = null;
   private warnings: string[] = [];
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(private readonly root: string, private readonly codexHome: string) {}
   private get file() { return path.join(this.root, 'analytics.json'); }
   async load() {
@@ -38,6 +39,12 @@ export class AnalyticsStore {
     this.saving = next.catch(()=>{});
     return next;
   }
+  private scheduleSave() {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => { this.saveTimer = null; void this.save().catch(() => { this.warnings.push('분석 기록 저장에 실패했습니다.'); }); }, 1500);
+  }
+  async settle() { await this.scanning; await this.flush(); }
+  async flush() { if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; } await this.save(); }
   pulse(accountId: string | null, now = new Date()) {
     const at = now.toISOString(); const prior = this.lastPulse;
     if (prior?.accountId && prior.accountId === accountId && Date.parse(at)-Date.parse(prior.at) <= 90_000) {
@@ -53,7 +60,7 @@ export class AnalyticsStore {
     if (this.db.observations.some(o=>o.accountId === accountId && o.at === usage.fetchedAt)) return;
     this.db.observations.push({ at: usage.fetchedAt, accountId, weeklyUsed: week ? 100-week.remaining : null, resetAt: week?.resetAt ?? null, credits: usage.credits?.balance ?? null });
     if (this.db.observations.length > 100_000) { this.db.observations.splice(0, this.db.observations.length - 100_000); this.db.truncated = true; }
-    await this.save();
+    this.scheduleSave();
   }
   async scan() {
     if (this.scanning) return this.scanning;
@@ -121,7 +128,12 @@ export class AnalyticsStore {
       this.db.events.splice(0,this.db.events.length-MAX_EVENTS); this.db.truncated = true;
     }
     this.db.scannedAt = new Date().toISOString();
-    await this.save();
+    await this.flush();
+  }
+  latestQuotaObservations() {
+    const latest = new Map<string, QuotaObservation>();
+    for (const row of this.db.observations) if (row.weeklyUsed !== null && (!latest.has(row.accountId) || row.at > latest.get(row.accountId)!.at)) latest.set(row.accountId,row);
+    return [...latest.values()];
   }
   async query(query: AnalyticsQuery) {
     await this.load();

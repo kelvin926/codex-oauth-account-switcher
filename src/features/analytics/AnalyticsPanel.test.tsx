@@ -13,6 +13,10 @@ describe('analytics filters',()=>{
   expect(screen.getByText('GPT-6 Sol / xhigh')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('집계 단위'),{target:{value:'hour'}});
   await waitFor(()=>expect(screen.getByRole('img',{name:'기간별 총토큰 막대 그래프'}).querySelectorAll('rect').length).toBeGreaterThan(2));
-  expect(screen.getByText('주간 소모율은 추정값입니다.')).toBeTruthy();
+  fireEvent.focus(screen.getByRole('button',{name:'주간 한도 추정 도움말'}));
+  expect(screen.getByRole('tooltip').textContent).toContain('주간 소모율은 추정값입니다.');
+  fireEvent.keyDown(screen.getByRole('button',{name:'주간 한도 추정 도움말'}),{key:'Escape'});
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  expect(screen.getByRole('button',{name:'캐시 적중률 도움말'})).toBeTruthy();
  });
 });
