@@ -3,7 +3,7 @@ import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react'
 import { afterEach,describe,expect,it } from 'vitest';
 import { AnalyticsPanel } from './AnalyticsPanel';
 import { getDemoDashboard } from '../../demo/demoData';
-afterEach(cleanup);
+afterEach(()=>{cleanup();localStorage.clear();});
 describe('analytics filters',()=>{
  it('filters the model and changes time granularity without hiding the estimation caveat',async()=>{
   render(<AnalyticsPanel accounts={getDemoDashboard('populated').accounts} demo/>);
@@ -29,4 +29,20 @@ describe('analytics filters',()=>{
   fireEvent.focus(screen.getByRole('button',{name:'캐시 적중률 도움말'}));
   expect(screen.getByRole('tooltip').textContent).toContain('입력 100토큰 중 60토큰');
  });
+ it('shows Max and Ultra, filters Fast, and labels Codex billing and the Astra exception',async()=>{
+  render(<AnalyticsPanel accounts={getDemoDashboard('populated').accounts} demo/>);
+  await waitFor(()=>expect(screen.getByRole('option',{name:'최대 (max)'})).toBeTruthy());
+  expect(screen.getByRole('option',{name:'울트라 (ultra)'})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('생각 깊이'),{target:{value:'ultra'}});
+  await waitFor(()=>expect(screen.getAllByRole('rowheader').every(e=>e.textContent?.includes('ultra'))).toBe(true));
+  fireEvent.change(screen.getByLabelText('생각 깊이'),{target:{value:''}});
+  fireEvent.change(screen.getByLabelText('속도'),{target:{value:'fast'}});
+  await waitFor(()=>expect(screen.getByText('18개 기록')).toBeTruthy());
+  expect(screen.getByText('남음 70.0%')).toBeTruthy();
+  fireEvent.click(screen.getByText('계산 기준: Codex 앱'));
+  await waitFor(()=>expect(screen.getByText('Astra는 긴 컨텍스트 할증 면제입니다.',{exact:false})).toBeTruthy());
+  expect(screen.queryByText('API Standard',{exact:false})).toBeNull();
+  expect(screen.getByLabelText('속도 미기록 처리')).toHaveProperty('value','exclude');
+ });
+
 });

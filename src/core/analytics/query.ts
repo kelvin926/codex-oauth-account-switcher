@@ -1,5 +1,5 @@
-import type { AnalyticsQuery, AnalyticsResult, AnalyticsRow, QuotaObservation, UsageEvent, WeeklyBudget } from '../../shared/features.js';
-import { addCost, cacheHit, emptyCost, priceEvent } from './pricing.js';
+import type { AnalyticsQuery, AnalyticsResult, AnalyticsRow, PricingOptions, QuotaObservation, UsageEvent, WeeklyBudget } from '../../shared/features.js';
+import { addCost, cacheHit, emptyCost, priceEvent, pricingOptions, PRICING_DATE } from './pricing.js';
 import { emptyCounts } from './parser.js';
 export type AccountSpan = { start: string; end: string; accountId: string };
 export function attributeEvents(events: UsageEvent[], spans: AccountSpan[]): UsageEvent[] {
@@ -50,18 +50,21 @@ function quotaIntervals(events: UsageEvent[], observations: QuotaObservation[], 
   }
   return result;
 }
-export function estimateWeekly(events: UsageEvent[], observations: QuotaObservation[], spans: AccountSpan[] = []): Map<string, number> {
-  return allocateWeekly(quotaIntervals(events,observations,spans));
+export function estimateWeekly(events: UsageEvent[], observations: QuotaObservation[], spans: AccountSpan[] = [], options: PricingOptions = pricingOptions()): Map<string, number> {
+  return allocateWeekly(quotaIntervals(events,observations,spans), options);
 }
-function allocateWeekly(intervals: QuotaInterval[]) {
+function allocateWeekly(intervals: QuotaInterval[], options: PricingOptions) {
   const estimates = new Map<string, number>();
   for (const interval of intervals) {
-    const total = interval.events.reduce((sum,e)=>sum+e.total,0);
-    for (const event of interval.events) estimates.set(event.id,interval.delta*event.total/total);
+    const prices = interval.events.map(e=>priceEvent(e,options));
+    if (prices.some(p=>p===null)) continue; // Unknown prices must not redistribute their share to known models.
+    const total = prices.reduce((sum,p)=>sum+p!.credits,0);
+    if (total<=0) continue;
+    for (const [i,event] of interval.events.entries()) estimates.set(event.id,interval.delta*prices[i]!.credits/total);
   }
   return estimates;
 }
-function weeklyBudget(intervals: QuotaInterval[], observations: QuotaObservation[], query: AnalyticsQuery): WeeklyBudget {
+function weeklyBudget(intervals: QuotaInterval[], observations: QuotaObservation[], query: AnalyticsQuery, options: PricingOptions): WeeklyBudget {
   const empty: WeeklyBudget = { limitUsd:null,usedUsd:null,remainingUsd:null,usedPercent:null,observedPercent:0,intervals:0,at:null,resetAt:null };
   if (!query.accountId || query.accountId === 'unknown') return empty;
   const rows = observations.filter(o=>o.accountId===query.accountId && o.weeklyUsed!==null && o.resetAt && o.at<query.end).sort((a,b)=>a.at.localeCompare(b.at));
@@ -73,7 +76,7 @@ function weeklyBudget(intervals: QuotaInterval[], observations: QuotaObservation
   let cost = 0, points = 0, count = 0;
   for (const interval of intervals) {
     if (interval.after.accountId!==query.accountId || interval.after.resetAt!==latest.resetAt || interval.before.at<rows[first].at || interval.after.at>latest.at || interval.before.weeklyUsed!>=100) continue;
-    const prices = interval.events.map(priceEvent);
+    const prices = interval.events.map(e=>priceEvent(e,options));
     if (prices.some(p=>p===null)) continue;
     cost += prices.reduce((sum,p)=>sum+p!.usd,0); points += interval.delta; count++;
   }
@@ -96,10 +99,12 @@ export function queryAnalytics(events: UsageEvent[], observations: QuotaObservat
   const unique = [...new Map(events.map(e=>[e.id,e])).values()].sort((a,b)=>a.at.localeCompare(b.at));
   const attributed = attributeEvents(unique, spans);
   const intervals = quotaIntervals(attributed, observations, spans);
-  const estimates = allocateWeekly(intervals);
+  const options = pricingOptions(query.pricing);
+  const estimates = allocateWeekly(intervals, options);
   const selected = attributed.filter(e => Date.parse(e.at) >= start && Date.parse(e.at) < end &&
     (!query.accountId || (query.accountId === 'unknown' ? !e.accountId : e.accountId === query.accountId)) &&
-    (!query.model || e.model === query.model) && (!query.effort || e.effort === query.effort));
+    (!query.model || e.model === query.model) && (!query.effort || e.effort === query.effort) &&
+    (!query.serviceTier || (e.serviceTier ?? 'unknown') === query.serviceTier));
   const row = (key: string): AnalyticsRow => ({ ...emptyCounts(), key, count: 0, weeklyEstimate: null, cost: emptyCost() });
   const total = row('전체'); const timeline = new Map<string, AnalyticsRow>(); const dimensions = new Map<string, AnalyticsRow>();
   const add = (r: AnalyticsRow, e: UsageEvent, price: ReturnType<typeof priceEvent>) => {
@@ -112,16 +117,16 @@ export function queryAnalytics(events: UsageEvent[], observations: QuotaObservat
   for (const e of selected) {
     const key = bucketKey(e.at, query.bucket), dimension = `${e.model} / ${e.effort}`;
     if (!timeline.has(key)) timeline.set(key,row(key)); if (!dimensions.has(dimension)) dimensions.set(dimension,row(dimension));
-    const price = priceEvent(e);
+    const price = priceEvent(e,options);
     add(total,e,price); add(timeline.get(key)!,e,price); add(dimensions.get(dimension)!,e,price);
   }
   const page = Math.max(0, Math.floor(query.page ?? 0));
   return {
-    weeklyBudget:weeklyBudget(intervals,observations,query),
+    weeklyBudget:weeklyBudget(intervals,observations,query,options), pricing:options,
     total, timeline: [...timeline.values()], dimensions: [...dimensions.values()].sort((a,b)=>b.total-a.total),
     events: [...selected].reverse().slice(page*100,(page+1)*100).map(e=>({...e, weeklyEstimate: estimates.get(e.id) ?? null})),
     eventCount: selected.length, observations: observations.filter(o=>Date.parse(o.at)>=start&&Date.parse(o.at)<end&&(!query.accountId||o.accountId===query.accountId)).slice(-500),
-    models: [...new Set(unique.map(e=>e.model))].sort(), efforts: [...new Set(unique.map(e=>e.effort))].sort(),
+    models: [...new Set(unique.map(e=>e.model))].sort(), efforts: [...new Set(unique.map(e=>e.effort))].sort((a,b)=>{const order=['none','minimal','low','medium','high','xhigh','max','ultra'];const rank=(v:string)=>order.includes(v)?order.indexOf(v):99;return rank(a)-rank(b)||a.localeCompare(b);}),
     scannedAt: null, files: 0, pendingFiles: 0, warnings: [], unknownEvents: selected.filter(e=>!e.accountId).length
   };
 }
@@ -130,14 +135,16 @@ export function analyticsCsv(result: AnalyticsResult): string {
   // Prefix formula-like labels before spreadsheet import.
   const safe = (s: string) => /^[=+@-]/.test(s) ? `'${s}` : s;
   return '\ufeff' + [
-    ['기간','입력(캐시 포함)','캐시 입력','캐시 쓰기','출력(추론 포함)','추론','총토큰','기록 수','주간 한도 소모 추정(%p)','API 환산 USD (추정)','캐시 절감 USD (추정)','캐시 적중률(%)','가격 확인 기록','미가격 기록','캐시 미확인 기록'],
-    ...result.timeline.map(r=>[safe(r.key),r.input,r.cached,r.cacheWrite,r.output,r.reasoning,r.total,r.count,r.weeklyEstimate??'',r.cost.pricedEvents?r.cost.usd:'',r.cost.pricedEvents?r.cost.cacheSavingsUsd:'',cacheHit(r.cost)??'',r.cost.pricedEvents,r.cost.unpricedEvents,r.cost.cacheUnknownEvents]),
-    [], ['모델 / 리즈닝','입력(캐시 포함)','캐시 입력','캐시 쓰기','출력(추론 포함)','추론','총토큰','기록 수','주간 한도 소모 추정(%p)','API 환산 USD (추정)','캐시 절감 USD (추정)','캐시 적중률(%)','가격 확인 기록','미가격 기록','캐시 미확인 기록'],
-    ...result.dimensions.map(r=>[safe(r.key),r.input,r.cached,r.cacheWrite,r.output,r.reasoning,r.total,r.count,r.weeklyEstimate??'',r.cost.pricedEvents?r.cost.usd:'',r.cost.pricedEvents?r.cost.cacheSavingsUsd:'',cacheHit(r.cost)??'',r.cost.pricedEvents,r.cost.unpricedEvents,r.cost.cacheUnknownEvents]),
+    ['기간','입력(캐시 포함)','캐시 입력','캐시 쓰기','출력(추론 포함)','추론','총토큰','기록 수','주간 한도 소모 추정(%p)','Codex 크레딧 환산 USD (추정)','캐시 절감 USD (추정)','캐시 적중률(%)','가격 확인 기록','미가격 기록','캐시 미확인 기록','Codex 크레딧 (추정)','Fast 추가 USD','컨텍스트 추가 USD','속도 미기록 수','가정 적용 기록 수','Astra 컨텍스트 면제 기록 수'],
+    ...result.timeline.map(r=>[safe(r.key),r.input,r.cached,r.cacheWrite,r.output,r.reasoning,r.total,r.count,r.weeklyEstimate??'',r.cost.pricedEvents?r.cost.usd:'',r.cost.pricedEvents?r.cost.cacheSavingsUsd:'',cacheHit(r.cost)??'',r.cost.pricedEvents,r.cost.unpricedEvents,r.cost.cacheUnknownEvents,r.cost.pricedEvents?r.cost.credits:'',r.cost.fastExtraUsd,r.cost.contextExtraUsd,r.cost.unknownSpeedEvents,r.cost.assumedEvents,r.cost.contextExemptEvents]),
+    [], ['모델 / 리즈닝','입력(캐시 포함)','캐시 입력','캐시 쓰기','출력(추론 포함)','추론','총토큰','기록 수','주간 한도 소모 추정(%p)','Codex 크레딧 환산 USD (추정)','캐시 절감 USD (추정)','캐시 적중률(%)','가격 확인 기록','미가격 기록','캐시 미확인 기록','Codex 크레딧 (추정)','Fast 추가 USD','컨텍스트 추가 USD','속도 미기록 수','가정 적용 기록 수','Astra 컨텍스트 면제 기록 수'],
+    ...result.dimensions.map(r=>[safe(r.key),r.input,r.cached,r.cacheWrite,r.output,r.reasoning,r.total,r.count,r.weeklyEstimate??'',r.cost.pricedEvents?r.cost.usd:'',r.cost.pricedEvents?r.cost.cacheSavingsUsd:'',cacheHit(r.cost)??'',r.cost.pricedEvents,r.cost.unpricedEvents,r.cost.cacheUnknownEvents,r.cost.pricedEvents?r.cost.credits:'',r.cost.fastExtraUsd,r.cost.contextExtraUsd,r.cost.unknownSpeedEvents,r.cost.assumedEvents,r.cost.contextExemptEvents]),
     [], ['계정 한도 100% 환산 USD (추정)',result.weeklyBudget.limitUsd??''],
     ['한도 중 사용 USD (추정)',result.weeklyBudget.usedUsd??''],
     ['한도 중 남은 USD (추정)',result.weeklyBudget.remainingUsd??''],
-    ['가격 기준','2026-09-26 API Standard. 실제 구독 청구액 아님. 캐시 쓰기 누락은 0 가정. 미가격 기록 제외.'],
+    ['가격 기준',`${PRICING_DATE} Codex 앱 크레딧 요율. Fast 2.5배. 별도 캐시 쓰기 가산 없음. 272K 초과 입력/캐시 2배, 출력 1.5배. Astra Codex는 컨텍스트 할증 면제. 실제 청구액 아님. 미가격 기록 제외.`],
+    ['1크레딧 USD 환산 가정',result.pricing.creditUsd],
+    ['속도 미기록 계산 가정',result.pricing.unknownSpeed],
     [], ['참고','로컬에 관측된 기록만 집계. 계정 귀속과 주간 한도 배분은 추정. 외부 사용 포함 가능. 한도 추정은 관측 구간 일부만 포함.']
   ].map(row=>row.map(quote).join(',')).join('\r\n');
 }

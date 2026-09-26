@@ -9,10 +9,12 @@ export type ResetCredit = { id: string; title: string | null; expiresAt: string 
 export type ResetDetails = { available: number | null; credits: ResetCredit[]; pending: boolean; message?: string };
 export type Diagnostic = { name: string; ok: boolean; detail: string };
 export type TokenCounts = { input: number; cached: number; cacheWrite: number; output: number; reasoning: number; total: number };
-export type UsageEvent = TokenCounts & { id: string; at: string; session: string; turn: string; model: string; effort: string; provider: string; accountId: string | null; attribution: 'unknown' | 'observed-login'; cacheKnown?: boolean; cacheWriteKnown?: boolean };
+export type ServiceTier = 'standard' | 'fast' | 'unknown' | 'unsupported';
+export type UsageEvent = TokenCounts & { id: string; at: string; session: string; turn: string; model: string; effort: string; provider: string; accountId: string | null; attribution: 'unknown' | 'observed-login'; cacheKnown?: boolean; cacheWriteKnown?: boolean; serviceTier?: ServiceTier; tierSource?: 'turn' | 'thread-default' };
 export type QuotaObservation = { at: string; accountId: string; weeklyUsed: number | null; resetAt: string | null; credits: number | null };
-export type AnalyticsQuery = { start: string; end: string; bucket: 'hour' | 'day' | 'week' | 'month'; accountId?: string; model?: string; effort?: string; page?: number };
-export type CostSummary = { usd: number; cacheSavingsUsd: number; pricedEvents: number; unpricedEvents: number; assumedWriteEvents: number; cacheKnownInput: number; cacheKnownRead: number; cacheUnknownEvents: number };
+export type PricingOptions = { creditUsd: number; unknownSpeed: 'exclude' | 'standard' | 'fast' };
+export type AnalyticsQuery = { start: string; end: string; bucket: 'hour' | 'day' | 'week' | 'month'; accountId?: string; model?: string; effort?: string; serviceTier?: ServiceTier; pricing?: Partial<PricingOptions>; page?: number };
+export type CostSummary = { usd: number; credits: number; cacheSavingsUsd: number; fastExtraUsd: number; contextExtraUsd: number; fastEvents: number; contextExemptEvents: number; longContextEvents: number; unknownSpeedEvents: number; assumedEvents: number; pricedEvents: number; unpricedEvents: number; cacheKnownInput: number; cacheKnownRead: number; cacheUnknownEvents: number };
 export type WeeklyBudget = { limitUsd: number | null; usedUsd: number | null; remainingUsd: number | null; usedPercent: number | null; observedPercent: number; intervals: number; at: string | null; resetAt: string | null };
 export type AnalyticsRow = TokenCounts & { key: string; count: number; weeklyEstimate: number | null; cost: CostSummary };
 export type AnalyticsResult = {
@@ -21,6 +23,7 @@ export type AnalyticsResult = {
   observations: QuotaObservation[]; models: string[]; efforts: string[];
   scannedAt: string | null; files: number; pendingFiles: number; warnings: string[]; unknownEvents: number;
   weeklyBudget: WeeklyBudget;
+  pricing: PricingOptions;
 };
 export type FeatureApi = {
   getForecast(refresh?: boolean): Promise<import('./forecast').ForecastState>;

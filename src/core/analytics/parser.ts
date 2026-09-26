@@ -1,12 +1,16 @@
-import type { TokenCounts, UsageEvent } from '../../shared/features.js';
+import type { ServiceTier, TokenCounts, UsageEvent } from '../../shared/features.js';
+
+export const PARSER_VERSION = 2;
 
 export type ParserState = {
   session: string; createdAt: string; fork: boolean; model: string; effort: string; provider: string; turn: string;
   previous: TokenCounts | null; skipped: number;
+  serviceTier: ServiceTier; nextTier: ServiceTier; active: boolean; tierSource?: UsageEvent['tierSource'];
 };
 export const emptyCounts = (): TokenCounts => ({ input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 });
 export const createParserState = (session: string): ParserState => ({
-  session, createdAt: '', fork: false, model: '확인 불가', effort: '확인 불가', provider: '확인 불가', turn: '', previous: null, skipped: 0
+  session, createdAt: '', fork: false, model: '확인 불가', effort: '확인 불가', provider: '확인 불가', turn: '', previous: null, skipped: 0,
+  serviceTier: 'unknown', nextTier: 'unknown', active: false
 });
 export function counts(raw: any): TokenCounts | null {
   if (!raw || !Number.isSafeInteger(raw.total_tokens) || raw.total_tokens < 0) return null;
@@ -20,10 +24,15 @@ export function counts(raw: any): TokenCounts | null {
   return result;
 }
 const text = (v: unknown, fallback = '확인 불가') => typeof v === 'string' && v.length <= 300 ? v : fallback;
+function tier(value: unknown): ServiceTier {
+  if (value === null || value === 'default' || value === 'standard') return 'standard';
+  if (value === 'fast' || value === 'priority') return 'fast';
+  return value === undefined ? 'unknown' : 'unsupported';
+}
 
 /** Read only metadata and numeric usage. Never persist message/tool text or authentication. */
 export function parseRolloutLine(line: string, state: ParserState): UsageEvent | null {
-  if (!/"(?:session_meta|turn_context|token_count|model_reroute)"/.test(line)) return null;
+  if (!/"(?:session_meta|turn_context|token_count|model_reroute|thread_settings_applied|task_started|turn_started|task_complete|turn_complete|turn_aborted)"/.test(line)) return null;
   let item: any;
   try { item = JSON.parse(line); } catch { state.skipped++; return null; }
   const p = item.payload;
@@ -37,12 +46,36 @@ export function parseRolloutLine(line: string, state: ParserState): UsageEvent |
     return null;
   }
   if (item.type === 'turn_context') {
-    state.turn = text(p.turn_id, '');
+    const turn = text(p.turn_id, '');
+    if (turn !== state.turn || !state.active) { state.serviceTier = state.nextTier; state.tierSource = 'thread-default'; }
+    if (Object.hasOwn(p, 'service_tier')) { state.serviceTier = tier(p.service_tier); state.tierSource = 'turn'; }
+    state.turn = turn; state.active = true;
     state.model = text(p.model);
     state.effort = text(p.effort ?? p.reasoning_effort ?? p.collaboration_mode?.settings?.reasoning_effort);
     return null;
   }
   if (item.type !== 'event_msg') return null;
+  if (p.type === 'thread_settings_applied' && p.thread_settings && typeof p.thread_settings === 'object') {
+    // Snapshots copied into another thread must not overwrite this thread's settings.
+    if (p.thread_id && p.thread_id !== state.session) return null;
+    const settings = p.thread_settings;
+    // In a complete persisted ThreadSettingsSnapshot, omitted Option service_tier means Standard.
+    // Require identifying fields before interpreting omission; incomplete metadata stays unknown.
+    const complete = typeof settings.model === 'string' && typeof settings.model_provider_id === 'string';
+    state.nextTier = tier(Object.hasOwn(settings, 'service_tier') ? settings.service_tier : complete ? null : undefined);
+    // A mid-turn preference change cannot identify the tier of an already in-flight request.
+    state.serviceTier = state.active ? 'unknown' : state.nextTier;
+    state.tierSource = state.active ? undefined : 'thread-default';
+    return null;
+  }
+  if (p.type === 'task_started' || p.type === 'turn_started') {
+    const turn = text(p.turn_id, '');
+    if (turn !== state.turn || state.tierSource !== 'turn') { state.serviceTier = state.nextTier; state.tierSource = 'thread-default'; }
+    state.turn = turn; state.active = true; return null;
+  }
+  if (p.type === 'task_complete' || p.type === 'turn_complete' || p.type === 'turn_aborted') {
+    state.active = false; return null;
+  }
   if (p.type === 'model_reroute') { state.model = text(p.to_model ?? p.toModel); return null; }
   if (p.type !== 'token_count' || !p.info) return null;
   const current = counts(p.info.total_token_usage);
@@ -69,7 +102,7 @@ export function parseRolloutLine(line: string, state: ParserState): UsageEvent |
     cacheWriteKnown: p.info.last_token_usage.cache_write_input_tokens != null || p.info.last_token_usage.input_tokens_details?.cache_write_tokens != null,
     id: `${state.session}:${state.turn}:${timestamp}:${current.total}`,
     at: new Date(timestamp).toISOString(), session: state.session, turn: state.turn,
-    model: state.model, effort: state.effort, provider: state.provider,
+    model: state.model, effort: state.effort, provider: state.provider, serviceTier: state.serviceTier, tierSource: state.serviceTier === 'unknown' ? undefined : state.tierSource,
     accountId: null, attribution: 'unknown'
   };
 }

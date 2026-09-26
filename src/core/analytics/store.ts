@@ -5,10 +5,10 @@ import { readJsonWithBackup, writeFileAtomic } from '../atomicFile.js';
 import { getUsageWindows } from '../usageWindows.js';
 import type { UsageSnapshot } from '../types.js';
 import type { AnalyticsQuery, QuotaObservation, UsageEvent } from '../../shared/features.js';
-import { createParserState, parseRolloutLine, type ParserState } from './parser.js';
+import { createParserState, parseRolloutLine, PARSER_VERSION, type ParserState } from './parser.js';
 import { queryAnalytics, type AccountSpan } from './query.js';
 
-type Cursor = { offset: number; size: number; modified: number; skipping: boolean; state: ParserState };
+type Cursor = { parserVersion?: number; offset: number; size: number; modified: number; skipping: boolean; state: ParserState };
 type StoredEvent = UsageEvent & { file: string };
 type Database = { version: 1; files: Record<string, Cursor>; events: StoredEvent[]; observations: QuotaObservation[]; spans: AccountSpan[]; truncated: boolean; scannedAt: string | null };
 const blank = (): Database => ({ version: 1, files: {}, events: [], observations: [], spans: [], truncated: false, scannedAt: null });
@@ -92,9 +92,9 @@ export class AnalyticsStore {
       try {
         const info = await stat(file);
         let cursor = this.db.files[key];
-        if (!cursor || info.size < cursor.offset || (info.size === cursor.size && info.mtimeMs !== cursor.modified)) {
+        if (!cursor || cursor.parserVersion !== PARSER_VERSION || info.size < cursor.offset || (info.size === cursor.size && info.mtimeMs !== cursor.modified)) {
           this.db.events = this.db.events.filter(e=>e.file!==key);
-          cursor = { offset: 0, size: info.size, modified: info.mtimeMs, skipping: false, state: createParserState(path.basename(file)) };
+          cursor = { parserVersion: PARSER_VERSION, offset: 0, size: info.size, modified: info.mtimeMs, skipping: false, state: createParserState(path.basename(file)) };
           this.db.files[key] = cursor;
         }
         cursor.size = info.size; cursor.modified = info.mtimeMs;

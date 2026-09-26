@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { mkdtemp,mkdir,writeFile,appendFile,rm } from 'node:fs/promises';
+import { mkdtemp,mkdir,writeFile,appendFile,readFile,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createParserState,parseRolloutLine } from '../analytics/parser';
@@ -40,14 +40,47 @@ describe('local token analytics',()=>{
     expect(attributeEvents([usage(1),usage(3),{...usage(4),provider:'custom'}],spans).map(e=>e.accountId)).toEqual([null,'a',null]);
   });
   it('allocates only within matched quota windows, with filter-independent weights',()=>{
-    const events=[{...usage(1,100),accountId:'a'},{...usage(2,300),accountId:'a',model:'model-b'}];
+    const events:UsageEvent[]=[{...usage(1,100),accountId:'a',model:'gpt-6-sol',serviceTier:'standard'},{...usage(2,100),accountId:'a',model:'gpt-6-astra',serviceTier:'standard'}];
     expect(estimateWeekly(events,observations,[{start:at(1),end:at(6),accountId:'a'}]).size).toBe(0);
-    const values=estimateWeekly(events,observations,spans);expect(values.get('event-1')).toBe(.5);expect(values.get('event-2')).toBe(1.5);
-    const result=queryAnalytics(events,observations,spans,{...query,accountId:'a',model:'model-a'});
-    expect(result.total.weeklyEstimate).toBe(.5);expect(result.total.total).toBe(100);
+    const values=estimateWeekly(events,observations,spans);expect(values.get('event-1')).toBeCloseTo(1/3);expect(values.get('event-2')).toBeCloseTo(5/3);
+    const result=queryAnalytics(events,observations,spans,{...query,accountId:'a',model:'gpt-6-sol'});
+    expect(result.total.weeklyEstimate).toBeCloseTo(1/3);expect(result.total.total).toBe(100);
     expect(queryAnalytics(events,observations,spans,query).total.weeklyEstimate).toBeNull();
     expect(estimateWeekly(events,[observations[0],{...observations[1],weeklyUsed:1}],spans).size).toBe(0);
     expect(estimateWeekly(events,[observations[0],{...observations[1],resetAt:'2026-10-01T00:00:00Z'}],spans).size).toBe(0);
+  });
+  it('reads persisted tier snapshots, preserves max/ultra, and never infers speed from effort',()=>{
+    const s=state();
+    expect(parseRolloutLine(event(100,100),s)).toMatchObject({serviceTier:'unknown',effort:'xhigh'});
+    parseRolloutLine(line('event_msg',{type:'thread_settings_applied',thread_id:'other',thread_settings:{model:'gpt-6-astra',model_provider_id:'openai',service_tier:'fast'}}),s);
+    expect(s.nextTier).toBe('unknown');
+    const setting=(speed?:string)=>line('event_msg',{type:'thread_settings_applied',thread_id:'thread',thread_settings:{model:'gpt-6-astra',model_provider_id:'openai',...(speed?{service_tier:speed}:{})}});
+    parseRolloutLine(setting('fast'),s);
+    expect(parseRolloutLine(event(150,50,2),s)?.serviceTier).toBe('unknown'); // In-flight tier cannot be recovered.
+    parseRolloutLine(line('event_msg',{type:'task_started',turn_id:'two'}),s);
+    parseRolloutLine(line('turn_context',{turn_id:'two',model:'gpt-6-astra',effort:'ultra'}),s);
+    expect(parseRolloutLine(event(200,50,3),s)).toMatchObject({serviceTier:'fast',tierSource:'thread-default',effort:'ultra'});
+    parseRolloutLine(setting(),s); // Complete snapshot omits None tier: Standard.
+    parseRolloutLine(line('turn_context',{turn_id:'three',model:'gpt-6-sol',reasoning_effort:'max'}),s);
+    expect(parseRolloutLine(event(250,50,4),s)).toMatchObject({serviceTier:'standard',tierSource:'thread-default',effort:'max'});
+    parseRolloutLine(line('turn_context',{turn_id:'four',model:'gpt-6-sol',effort:'max',service_tier:'priority'}),s);
+    expect(parseRolloutLine(event(300,50,5),s)?.serviceTier).toBe('fast');
+  });
+  it('reindexes old cursors for speed metadata without duplicating usage or losing quota history',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'analytics-migrate-'));const home=path.join(root,'home');
+    try{
+      await mkdir(path.join(home,'sessions'),{recursive:true});
+      const file=path.join(home,'sessions','one.jsonl');
+      await writeFile(file,[line('session_meta',{id:'thread',timestamp:at(0),model_provider:'openai'}),line('turn_context',{turn_id:'one',model:'gpt-6-sol',effort:'max',service_tier:'fast'}),event(100,100)].join('\n')+'\n');
+      const store=new AnalyticsStore(path.join(root,'data'),home);await store.scan();
+      const dbFile=path.join(root,'data','analytics.json');const db=JSON.parse(await readFile(dbFile,'utf8'));
+      delete db.files[path.join('sessions','one.jsonl')].parserVersion;
+      delete db.events[0].serviceTier;db.observations=observations;
+      await writeFile(dbFile,JSON.stringify(db));
+      const resumed=new AnalyticsStore(path.join(root,'data'),home);await resumed.scan();await resumed.scan();
+      const result=await resumed.query(query);
+      expect(result.eventCount).toBe(1);expect(result.events[0].serviceTier).toBe('fast');expect(result.observations).toEqual(observations);
+    }finally{await rm(root,{recursive:true,force:true});}
   });
   it('deduplicates mirrored files by event identity, preserves distinct threads, and uses exclusive end',()=>{
     const e=usage(1);const result=queryAnalytics([e,e,{...e,id:'other',session:'other'},usage(5)],[],[],{...query,end:at(5)});

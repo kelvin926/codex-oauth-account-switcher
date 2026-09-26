@@ -324,3 +324,8 @@ body { font-size: 16px; line-height: 1.5; }
 .analytics-glossary dt { font-weight: 650; color: #304f73; }
 .analytics-glossary dd { margin: 4px 0 0; color: #536983; }
 @media(max-width:1120px) { .analytics-panel .analysis-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+/* Keep the additional speed filter on the same two rows in compact windows. */
+.analytics-panel > .analysis-filters { grid-template-columns: repeat(5,minmax(0,1fr)); }
+@media(max-width:1120px) { .analytics-panel > .analysis-filters { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media(max-width:720px) { .analytics-panel > .analysis-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }
