@@ -18,7 +18,8 @@ const result = spawnSync(executable, [], {
 });
 if (result.error || result.status !== 0) throw result.error ?? new Error(`Smoke exit: ${result.status}`);
 const log = readFileSync(path.join(dataRoot, 'logs', 'main.log'), 'utf8');
-if (log.includes('did-fail-load') || !log.includes('메인 작업용') || !log.includes('1주 남은 양')) {
+if (log.includes('did-fail-load') || !log.includes('메인 작업용') || !log.includes('1주 남은 양') ||
+    !log.includes('초기화권') || !log.includes('3개') || !log.includes('1,234.56 크레딧')) {
   throw new Error('The packaged renderer did not display the account dashboard.');
 }
 if (statSync(screenshot).size < 10_000) throw new Error('Missing or empty dashboard screenshot');

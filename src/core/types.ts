@@ -20,6 +20,12 @@ export type AccountAuthSource =
   | 'login-window'
   | 'session-import';
 
+export type CreditsSnapshot = {
+  balance: number | null;
+  hasCredits: boolean | null;
+  unlimited: boolean | null;
+};
+
 export type UsageSnapshot = {
   fetchedAt: string;
   source: 'fixture' | 'live';
@@ -32,6 +38,9 @@ export type UsageSnapshot = {
   secondaryWindowSeconds?: number | null;
   allowed?: boolean;
   limitReached?: boolean;
+  // Optional for compatibility with saved snapshots from before v0.3.1.
+  availableResetCredits?: number | null;
+  credits?: CreditsSnapshot | null;
 };
 
 export type AccountRecord = {

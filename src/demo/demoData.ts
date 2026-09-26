@@ -28,7 +28,13 @@ function createAccount(
       primaryRemainingPercent,
       secondaryRemainingPercent,
       primaryResetAt: '2026-04-17T16:30:00.000Z',
-      secondaryResetAt: '2026-04-22T23:00:00.000Z'
+      secondaryResetAt: '2026-04-22T23:00:00.000Z',
+      availableResetCredits: id === 'demo-recommended' ? 3 : 0,
+      credits: {
+        balance: id === 'demo-recommended' ? 1234.56 : 0,
+        hasCredits: id === 'demo-recommended',
+        unlimited: false
+      }
     },
     createdAt: baseTimestamp,
     updatedAt: baseTimestamp

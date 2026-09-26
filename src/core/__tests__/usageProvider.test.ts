@@ -6,6 +6,46 @@ const now = new Date('2026-09-22T12:00:00Z');
 afterEach(() => vi.unstubAllGlobals());
 
 describe('server-provided quota windows', () => {
+  it('reads reset-credit totals and decimal credit balances from the usage response', () => {
+    const { usage } = parseUsageResponse({
+      rate_limit: { allowed: true },
+      rate_limit_reset_credits: { available_count: 3, credits: [{ id: 'one-visible-row' }] },
+      credits: { has_credits: true, unlimited: false, balance: '1234.5678' }
+    }, now);
+    expect(usage.availableResetCredits).toBe(3);
+    expect(usage.credits).toEqual({ hasCredits: true, unlimited: false, balance: 1234.5678 });
+  });
+
+  it('accepts credit-based accounts without quota windows and preserves a zero balance', () => {
+    const { usage } = parseUsageResponse({
+      rate_limit: null,
+      rate_limit_reset_credits: { available_count: 0 },
+      credits: { has_credits: false, unlimited: false, balance: '0' }
+    }, now);
+    expect(usage.availableResetCredits).toBe(0);
+    expect(usage.credits?.balance).toBe(0);
+    expect(getUsageWindows(usage)).toEqual([]);
+  });
+
+  it('keeps absent or malformed optional balances unknown while retaining valid usage', () => {
+    for (const balance of [null, '', ' ', false, '-1', 'not-a-number', Infinity]) {
+      const { usage } = parseUsageResponse({ rate_limit: { allowed: true },
+        credits: { balance }, rate_limit_reset_credits: { available_count: -1 } }, now);
+      expect(usage.credits).toBeNull();
+      expect(usage.availableResetCredits).toBeNull();
+    }
+    const { usage } = parseUsageResponse({ rate_limit: { allowed: true } }, now);
+    expect(usage.credits).toBeNull();
+    expect(usage.availableResetCredits).toBeNull();
+  });
+
+  it('preserves explicit unlimited credits without inferring a balance', () => {
+    const { usage } = parseUsageResponse({
+      credits: { has_credits: true, unlimited: true, balance: null }
+    }, now);
+    expect(usage.credits).toEqual({ hasCredits: true, unlimited: true, balance: null });
+  });
+
   it('supports weekly-only Pro without manufacturing a zero-percent five-hour limit', () => {
     const result = parseUsageResponse({ plan_type: 'pro', rate_limit: {
       primary_window: null,

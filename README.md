@@ -2,9 +2,11 @@
 
 Windows용 ChatGPT/Codex에서 여러 ChatGPT 계정의 인증을 안전하게 저장하고 전환하는 데스크톱 앱입니다.
 
-v0.3.0은 탐색기를 경유하지 않는 Windows 앱 재실행, 서버 응답에 따른 사용량 표시, 중복 전환 방지를 제공합니다. 계정 전환 시 공용 Codex 홈은 유지하고 `auth.json`만 교체합니다.
+v0.3.1은 탐색기를 경유하지 않는 Windows 앱 재실행, 서버 응답에 따른 사용량 표시, 중복 전환 방지를 제공합니다. 계정 전환 시 공용 Codex 홈은 유지하고 `auth.json`만 교체합니다.
 
-## v0.3.0 주요 변경
+## v0.3.1 주요 변경
+
+- 계정별 사용 가능한 초기화권 개수와 남은 크레딧을 표시합니다. 설치 후 **전체 갱신**으로 새 정보를 불러오세요. 서버가 정보를 제공하지 않으면 `확인 불가`로 표시합니다.
 
 - 전환 때 문서 폴더를 열 수 있던 `explorer.exe` 호출을 Windows 앱 활성화 API로 교체했습니다.
 - 주간 한도만 있는 Pro 계정을 지원하며, 없는 5시간 제한을 잔여량 0%로 표시하거나 추천 점수에 반영하지 않습니다.
@@ -30,8 +32,8 @@ v0.3.0은 탐색기를 경유하지 않는 Windows 앱 재실행, 서버 응답�
 
 [GitHub Releases](https://github.com/kelvin926/codex-oauth-account-switcher/releases/latest)에서 다음 중 하나를 받습니다.
 
-- `OAuth Account Switcher-0.3.0-x64.exe`: 설치 프로그램
-- `OAuth Account Switcher-0.3.0-x64.zip`: 포터블 패키지
+- `OAuth Account Switcher-0.3.1-x64.exe`: 설치 프로그램
+- `OAuth Account Switcher-0.3.1-x64.zip`: 포터블 패키지
 
 기존 v0.1.x 위에 설치해도 `%USERPROFILE%\.oauth-account-switcher` 데이터는 그대로 사용합니다.
 
@@ -108,5 +110,4 @@ npm run dist:win
 
 테스트에는 JSON 손상 복구, 계정 카탈로그 재구성, refresh token 체크포인트, 전환 롤백, ChatGPT/Codex 프로세스 스크립트, 채팅 및 설정 파일 불변성 검증이 포함됩니다.
 
-자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.3.0.md](docs/RELEASE_0.3.0.md)를 참고하세요.
-
+자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.3.1.md](docs/RELEASE_0.3.1.md)를 참고하세요.

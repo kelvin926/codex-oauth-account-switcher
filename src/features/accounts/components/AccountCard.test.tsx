@@ -36,6 +36,24 @@ const state: DesktopState = {
 };
 
 describe('AccountCard', () => {
+  it('shows the available reset count and credit balance on each account card', () => {
+    const { container } = render(<AccountCard account={{ ...account, usage: {
+      ...account.usage!, availableResetCredits: 3,
+      credits: { balance: 1234.5678, hasCredits: true, unlimited: false }
+    } }} state={state} recommendedId={null}
+      onRefresh={vi.fn()} onDelete={vi.fn()} onSwitch={vi.fn()} />);
+    const rows = Array.from(container.querySelectorAll('dl > div')).map(row => row.textContent);
+    expect(rows).toContain('초기화권3개');
+    expect(rows).toContain('남은 크레딧1,234.5678 크레딧');
+  });
+
+  it('shows unavailable metadata in old saved accounts instead of a false zero', () => {
+    const { container } = render(<AccountCard account={account} state={state} recommendedId={null}
+      onRefresh={vi.fn()} onDelete={vi.fn()} onSwitch={vi.fn()} />);
+    const rows = Array.from(container.querySelectorAll('dl > div')).map(row => row.textContent);
+    expect(rows).toContain('초기화권확인 불가');
+    expect(rows).toContain('남은 크레딧확인 불가');
+  });
   it('renders weekly-only Pro without a five-hour row and disables the active account', () => {
     const weeklyAccount: AccountRecord = { ...account, planType: 'pro', usage: {
       ...account.usage!, primaryRemainingPercent: null, primaryResetAt: null,
@@ -67,6 +85,8 @@ describe('AccountCard', () => {
       '5시간 초기화',
       '1주 남은 양',
       '1주 초기화',
+      '초기화권',
+      '남은 크레딧',
       '추천 점수',
       '마지막 확인'
     ]);

@@ -67,6 +67,9 @@ jobs:
             throw "Git tag and package version must match"
           }
           "tag=$tag" >> $env:GITHUB_OUTPUT
+          $notes = "docs/RELEASE_$version.md"
+          if (-not (Test-Path $notes)) { throw "Release notes are missing: $notes" }
+          "notes=$notes" >> $env:GITHUB_OUTPUT
           $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "Could not check existing releases" }
           $exists = @($releases | Where-Object { $_.tag_name -eq $tag }).Count -gt 0
@@ -77,7 +80,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          body_path: docs/RELEASE_0.3.0.md
+          body_path: ${{ steps.version.outputs.notes }}
           fail_on_unmatched_files: true
           files: |
             release/*.exe

@@ -3,6 +3,8 @@ import { formatWindowLabel, getUsageWindows } from '../../../core/usageWindows';
 import { PLAN_LABELS } from '../../../shared/desktopApi';
 import type { AccountRecord } from '../../../core/types';
 import {
+  formatCreditBalance,
+  formatResetCredits,
   formatRemaining,
   formatResetTimestamp,
   formatTimestamp,
@@ -57,6 +59,14 @@ export function AccountCard(props: AccountCardProps) {
           </div>
         ) : null}
         <div>
+          <dt>초기화권</dt>
+          <dd className="metric-value-compact">{formatResetCredits(account.usage?.availableResetCredits)}</dd>
+        </div>
+        <div>
+          <dt>남은 크레딧</dt>
+          <dd className="metric-value-compact">{formatCreditBalance(account.usage?.credits)}</dd>
+        </div>
+        <div>
           <dt>추천 점수</dt>
           <dd>{getAccountScore(account)}</dd>
         </div>
@@ -95,4 +105,3 @@ export function AccountCard(props: AccountCardProps) {
     </article>
   );
 }
-

@@ -1,6 +1,23 @@
 import { computeEffectiveRemaining } from '../../core/recommendation';
-import type { AccountRecord } from '../../core/types';
+import type { AccountRecord, CreditsSnapshot } from '../../core/types';
 import type { DesktopState } from '../../shared/desktopApi';
+
+const creditNumberFormat = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 20 });
+
+export function formatResetCredits(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? `${creditNumberFormat.format(value)}개` : '확인 불가';
+}
+
+export function formatCreditBalance(credits: CreditsSnapshot | null | undefined): string {
+  if (credits?.unlimited === true) return '무제한';
+  if (typeof credits?.balance === 'number' && Number.isFinite(credits.balance) && credits.balance >= 0) {
+    return `${creditNumberFormat.format(credits.balance)} 크레딧`;
+  }
+  if (credits?.hasCredits === false) return '0 크레딧';
+  if (credits?.hasCredits === true) return '보유 (잔액 미제공)';
+  return '확인 불가';
+}
 
 export function formatRemaining(value: number | null | undefined): string {
   if (typeof value !== 'number') {
