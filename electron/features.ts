@@ -12,6 +12,7 @@ import type { DashboardPayload } from '../src/shared/desktopApi.js';
 import type { AnalyticsQuery, Diagnostic, FeatureSettings, FeatureState } from '../src/shared/features.js';
 import { writeFileAtomic } from '../src/core/atomicFile.js';
 import { LoginManager } from './login.js';
+import { ForecastService, forecastLink } from '../src/core/forecast.js';
 
 type Dependencies = {
   root: string; home: string;
@@ -27,6 +28,7 @@ export class FeatureRuntime {
   readonly store:FeatureStore;
   readonly analytics:AnalyticsStore;
   readonly login:LoginManager;
+  readonly forecast:ForecastService;
   private reset:ResetCreditService;
   private tray:Tray|null=null;
   private lastDashboard:DashboardPayload|null=null;
@@ -37,13 +39,18 @@ export class FeatureRuntime {
   progress:string|null=null;
   constructor(private readonly deps:Dependencies){
     this.store=new FeatureStore(path.join(deps.root,'features.json'));
+    this.forecast=new ForecastService(path.join(deps.root,'forecast.json'),()=>this.store.settings,notice=>{
+      if(!Notification.isSupported())return;
+      const notification=new Notification(notice);
+      notification.on('click',()=>{this.show();BrowserWindow.getAllWindows()[0]?.webContents.send('forecast:show');});notification.show();
+    });
     this.analytics=new AnalyticsStore(deps.root,deps.home);
     this.reset=new ResetCreditService(path.join(deps.root,'reset-operations.json'));
     this.login=new LoginManager(path.join(deps.root,'login-staging'),deps.home,
       (raw,label,id,isCurrent)=>deps.serialize(async()=>{if(!isCurrent())throw new Error('취소된 로그인입니다.');await deps.capture(raw,label,id);}),url=>shell.openExternal(url));
   }
   async initialize(){
-    await this.store.load(); await this.analytics.load();
+    await this.store.load(); await this.analytics.load(); await this.forecast.load();
     this.configureTray(); this.register();
     this.timer=setInterval(()=>this.tick(),30_000);
     this.tick();
@@ -85,6 +92,8 @@ export class FeatureRuntime {
     try{await this.deps.serialize(()=>this.deps.switchAccount(account.id));}catch(error){await dialog.showMessageBox({type:'error',message:error instanceof Error?error.message:'전환 실패'});}
   }
   private tick(){
+    // Public information must not join the authentication/switch queue.
+    void this.forecast.refresh();
     if(this.tickPending)return;this.tickPending=true;
     void this.deps.serialize(async()=>{
       let id:string|null=null;
@@ -120,6 +129,8 @@ export class FeatureRuntime {
   private register(){
     const handle=(channel:string,callback:(...args:any[])=>Promise<any>)=>ipcMain.handle(channel,(_event,...args)=>this.deps.serialize(()=>callback(...args)));
     ipcMain.handle('features:get',()=>this.state()); // Must remain responsive while a switch is in progress.
+    ipcMain.handle('forecast:get',(_event,refresh:boolean)=>refresh?this.forecast.refresh():this.forecast.state());
+    ipcMain.handle('forecast:open',async(_event,value:unknown)=>{const url=forecastLink(value);if(!url)throw new Error('지원하지 않는 출처 링크입니다.');await shell.openExternal(url);});
     handle('features:settings',async(settings:FeatureSettings)=>{this.store.settings=validateSettings(settings);await this.store.save();this.configureTray();return this.state();});
     handle('features:preference',async(id:string,input:{priority:number;excluded:boolean})=>{
       if(!Number.isInteger(input?.priority)||input.priority< -2||input.priority>2||typeof input.excluded!=='boolean')throw new Error('계정 우선순위 값 오류');

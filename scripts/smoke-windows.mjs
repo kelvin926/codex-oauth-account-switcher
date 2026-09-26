@@ -1,40 +1,29 @@
-import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const dataRoot = mkdtempSync(path.join(tmpdir(), 'switcher-smoke-'));
 const executable = path.resolve('release/win-unpacked/OAuth Account Switcher.exe');
-const screenshot = path.resolve('release/smoke-dashboard.png');
-const result = spawnSync(executable, [], {
-  timeout: 30_000,
-  env: {
-    ...process.env,
-    OAUTH_SWITCHER_DATA_ROOT: dataRoot,
-    OAUTH_SWITCHER_DEMO_SCENARIO: 'populated',
-    OAUTH_SWITCHER_SCREENSHOT_FILE: screenshot,
-    OAUTH_SWITCHER_AUTOCLOSE_AFTER_CAPTURE: 'true'
+const screens = [
+  { tab: 'accounts', name: 'dashboard', markers: ['메인 작업용', '1주 남은 양', '초기화권', '3개', '1,234.56 크레딧'] },
+  { tab: 'analytics', name: 'analytics', markers: ['모델과 리즈닝별 상세', '통계 CSV', 'GPT-6 Sol'] },
+  { tab: 'forecast', name: 'forecast', markers: ['초기화 기록과 Tibo 공지', '59.2%', 'Lunarwerx'] }
+];
+for (const { tab, name, markers } of screens) {
+  const dataRoot = mkdtempSync(path.join(tmpdir(), `switcher-smoke-${name}-`));
+  const screenshot = path.resolve(`release/smoke-${name}.png`);
+  const result = spawnSync(executable, [], {
+    timeout: 30_000,
+    env: { ...process.env, OAUTH_SWITCHER_DATA_ROOT: dataRoot, OAUTH_SWITCHER_DEMO_SCENARIO: 'populated',
+      OAUTH_SWITCHER_DEMO_TAB: tab, OAUTH_SWITCHER_SCREENSHOT_FILE: screenshot, OAUTH_SWITCHER_AUTOCLOSE_AFTER_CAPTURE: 'true' }
+  });
+  const logPath = path.join(dataRoot, 'logs', 'main.log');
+  if (existsSync(logPath)) copyFileSync(logPath, `release/smoke-${name}.log`);
+  if (result.error || result.status !== 0) throw result.error ?? new Error(`${name} smoke exit: ${result.status}`);
+  const log = readFileSync(logPath, 'utf8');
+  if (log.includes('did-fail-load') || log.includes('renderer-capture-error') || markers.some(marker => !log.includes(marker))) {
+    throw new Error(`The packaged ${name} renderer failed: ${markers.filter(marker => !log.includes(marker)).join(', ')}. See smoke-${name}.log.`);
   }
-});
-if (result.error || result.status !== 0) throw result.error ?? new Error(`Smoke exit: ${result.status}`);
-const log = readFileSync(path.join(dataRoot, 'logs', 'main.log'), 'utf8');
-if (log.includes('did-fail-load') || !log.includes('메인 작업용') || !log.includes('1주 남은 양') ||
-    !log.includes('초기화권') || !log.includes('3개') || !log.includes('1,234.56 크레딧')) {
-  throw new Error('The packaged renderer did not display the account dashboard.');
+  if (statSync(screenshot).size < 10_000) throw new Error(`Missing or empty ${name} screenshot`);
+  console.log(`Packaged Windows executable rendered ${name} and exited successfully.`);
 }
-if (statSync(screenshot).size < 10_000) throw new Error('Missing or empty dashboard screenshot');
-console.log('Packaged Windows executable opened, rendered the demo dashboard, and exited successfully.');
-
-const analyticsScreenshot = path.resolve('release/smoke-analytics.png');
-const analytics = spawnSync(executable, [], {
-  timeout: 30_000,
-  env: { ...process.env, OAUTH_SWITCHER_DATA_ROOT: dataRoot, OAUTH_SWITCHER_DEMO_SCENARIO: 'populated',
-    OAUTH_SWITCHER_DEMO_TAB: 'analytics', OAUTH_SWITCHER_SCREENSHOT_FILE: analyticsScreenshot,
-    OAUTH_SWITCHER_AUTOCLOSE_AFTER_CAPTURE: 'true' }
-});
-if (analytics.error || analytics.status !== 0) throw analytics.error ?? new Error(`Analytics smoke exit: ${analytics.status}`);
-const analyticsLog = readFileSync(path.join(dataRoot, 'logs', 'main.log'), 'utf8');
-if (!analyticsLog.includes('모델과 리즈닝별 상세') || !analyticsLog.includes('통계 CSV') || statSync(analyticsScreenshot).size < 10_000) {
-  throw new Error('The packaged analytics screen did not render.');
-}
-console.log('Packaged usage analytics rendered model/reasoning breakdown, filters, and chart.');

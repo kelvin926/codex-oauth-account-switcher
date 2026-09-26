@@ -55,14 +55,16 @@ jobs:
             release/SHA256SUMS.txt
             release/smoke-dashboard.png
             release/smoke-analytics.png
+            release/smoke-forecast.png
 
       - name: Upload screen previews
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: screen-previews
           path: |
-            release/smoke-dashboard.png
-            release/smoke-analytics.png
+            release/smoke-*.png
+            release/smoke-*.log
 
       - name: Determine release version
         id: version

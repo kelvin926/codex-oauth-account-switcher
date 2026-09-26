@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  getForecast: (refresh) => ipcRenderer.invoke('forecast:get', refresh),
+  openForecastSource: (url) => ipcRenderer.invoke('forecast:open', url),
+  onShowForecast: (callback) => { const listener = () => callback(); ipcRenderer.on('forecast:show', listener); return () => { ipcRenderer.removeListener('forecast:show', listener); }; },
   getFeatures: () => ipcRenderer.invoke('features:get'),
   setFeatureSettings: (settings) => ipcRenderer.invoke('features:settings', settings),
   setAccountPreference: (id, input) => ipcRenderer.invoke('features:preference', id, input),

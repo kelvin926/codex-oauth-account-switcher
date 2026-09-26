@@ -118,3 +118,5 @@ npm run dist:win
 테스트에는 JSON 손상 복구, 계정 카탈로그 재구성, refresh token 체크포인트, 전환 롤백, ChatGPT/Codex 프로세스 스크립트, 채팅 및 설정 파일 불변성 검증이 포함됩니다.
 
 자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 변경 내역은 [docs/RELEASE_0.4.0.md](docs/RELEASE_0.4.0.md)를 참고하세요.
+
+`초기화 소식`에서는 [Lunarwerx Codex Forecast](https://codex.lunarwerx.com/)의 초기화 예상 확률과 범위, 초기화 이력, 이력에 연결된 Tibo 공지를 볼 수 있습니다. 5분 간격으로 갱신하며 새 기록, 공지, 예상 확률 상승 시 Windows 알림을 제공합니다. 제3자의 예상이며 내 계정의 초기화나 잔여 크레딧을 보장하지 않습니다. 데이터가 오래되거나 연결이 끊기면 마지막 정상 기록과 경고를 표시합니다. 이 공개 데이터 연결에는 계정 인증을 보내지 않습니다.

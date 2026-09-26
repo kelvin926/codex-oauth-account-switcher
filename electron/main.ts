@@ -793,33 +793,31 @@ function createMainWindow(): BrowserWindow {
   window.webContents.on('did-finish-load', () => {
     logLine('did-finish-load', window.webContents.getURL());
     if (screenshotOutputPath) {
-      setTimeout(() => {
-        void window.webContents.capturePage().then((image) => {
-          const shotPath = screenshotOutputPath;
-          mkdirSync(path.dirname(shotPath), { recursive: true });
-          writeFileSync(shotPath, image.toPNG());
-          logLine('renderer-capture', shotPath);
-          if (autoQuitAfterCapture) {
-            setTimeout(() => app.quit(), 150);
-          }
-        });
-      }, 900);
-
-      void window.webContents
-        .executeJavaScript(
-          `JSON.stringify({
-            rootHtml: document.getElementById('root')?.innerHTML ?? null,
-            scriptCount: document.scripts.length,
-            bodyText: document.body?.innerText ?? ''
-          })`
-        )
-        .then((snapshot) => logLine('renderer-snapshot', snapshot))
-        .catch((error) =>
-          logLine(
-            'renderer-snapshot-error',
-            error instanceof Error ? error.stack ?? error.message : String(error)
-          )
-        );
+      void (async () => {
+        const tab = process.env.OAUTH_SWITCHER_DEMO_TAB;
+        const marker = tab === 'analytics' ? '모델과 리즈닝별 상세' : tab === 'forecast' ? '초기화 기록과 Tibo 공지' : '계정 추가';
+        let ready = false;
+        for (let attempt = 0; attempt < 50 && !window.isDestroyed(); attempt++) {
+          ready = await window.webContents.executeJavaScript(`document.body?.innerText.includes(${JSON.stringify(marker)})`);
+          if (ready) break;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        if (window.isDestroyed()) return;
+        const snapshot = await window.webContents.executeJavaScript(`JSON.stringify({
+          rootHtml: document.getElementById('root')?.innerHTML ?? null,
+          bodyText: document.body?.innerText ?? ''
+        })`);
+        logLine('renderer-snapshot', snapshot);
+        const image = await window.webContents.capturePage();
+        mkdirSync(path.dirname(screenshotOutputPath), { recursive: true });
+        writeFileSync(screenshotOutputPath, image.toPNG());
+        logLine('renderer-capture', screenshotOutputPath);
+        if (!ready) throw new Error(`Renderer did not become ready: ${marker}`);
+        if (autoQuitAfterCapture) app.quit();
+      })().catch(error => {
+        logLine('renderer-capture-error', error instanceof Error ? error.stack : String(error));
+        if (autoQuitAfterCapture) app.exit(1);
+      });
     }
   });
 
@@ -831,13 +829,14 @@ function createMainWindow(): BrowserWindow {
     const targetUrl = new URL(rendererUrl);
     if (demoScenario) {
       targetUrl.searchParams.set('demo', demoScenario);
+      targetUrl.searchParams.set('tab', ['analytics','forecast'].includes(process.env.OAUTH_SWITCHER_DEMO_TAB ?? '') ? process.env.OAUTH_SWITCHER_DEMO_TAB! : 'accounts');
     }
     void window.loadURL(targetUrl.toString());
   } else {
     const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
     logLine('loading-file', indexPath);
     void window.loadFile(indexPath, {
-      search: demoScenario ? `demo=${encodeURIComponent(demoScenario)}&tab=${process.env.OAUTH_SWITCHER_DEMO_TAB === 'analytics' ? 'analytics' : 'accounts'}` : undefined
+      search: demoScenario ? `demo=${encodeURIComponent(demoScenario)}&tab=${['analytics','forecast'].includes(process.env.OAUTH_SWITCHER_DEMO_TAB ?? '') ? process.env.OAUTH_SWITCHER_DEMO_TAB : 'accounts'}` : undefined
     });
   }
 

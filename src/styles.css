@@ -455,4 +455,19 @@ details summary { cursor: pointer; color: #4c6246; padding: .8rem 0; font-weight
 .login-code { font-size: 1.5rem; letter-spacing: .12em; }
 .modal-backdrop { z-index: 5; }
 .modal-panel { max-height: 92vh; overflow-y: auto; }
+.forecast-headline { font-size: 1.2rem; font-weight: 600; color: #384b30; }
+.forecast-hero { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 1rem; margin: 1rem 0; }
+.forecast-hero>div { border: 1px solid #d8decb; background: #f0f3e9; border-radius: 16px; padding: 1.2rem; display: flex; flex-direction: column; gap: .7rem; }
+.forecast-hero span { color: #54604b; font-size: .9rem; }
+.forecast-probability strong { font-size: 2.4rem; color: #304c29; font-variant-numeric: tabular-nums; }
+.forecast-probability progress { width: 100%; height: 8px; accent-color: #496b3e; }
+.forecast-hero small { color: #68735f; }
+.forecast-latest strong { font-size: 1.2rem; line-height: 1.5; margin: auto 0; }
+.forecast-stats { grid-template-columns: repeat(6,minmax(0,1fr)); }
+.forecast-stats strong { font-size: 1.25rem; }
+.forecast-toggle { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+.forecast-feed { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .9rem; }
+.forecast-feed article { border: 1px solid #e3d9c9; padding: 1.2rem; border-radius: 16px; }
+.forecast-feed article p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font-size: .9rem; }
+.forecast-badge { display: inline-block; color: #47613b; background: #eaf0df; padding: .3rem .6rem; border-radius: 8px; font-size: .75rem; margin-top: .6rem; }
 @media(max-width:860px) { .analysis-filters,.settings-grid,.stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .panel-heading { align-items: flex-start; flex-direction: column; } }

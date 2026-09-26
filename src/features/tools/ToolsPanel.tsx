@@ -8,6 +8,9 @@ export function ToolsPanel({demo,onChanged}:{demo:boolean;onChanged:()=>void}){
   return <section className="feature-panel"><h2>설정과 진단</h2><fieldset disabled={busy} className="settings-grid">
     <label><input type="checkbox" checked={state.settings.tray} onChange={e=>void save({tray:e.target.checked})}/> 창을 닫으면 트레이에 유지</label>
     <label><input type="checkbox" checked={state.settings.notifications} onChange={e=>void save({notifications:e.target.checked})}/> 잔여량 부족 및 한도 복구 알림</label>
+    <label><input type="checkbox" checked={state.settings.forecastEnabled} onChange={e=>void save({forecastEnabled:e.target.checked})}/> Lunarwerx 소식 자동 갱신 (5분)</label>
+    <label><input type="checkbox" checked={state.settings.forecastNotifications} onChange={e=>void save({forecastNotifications:e.target.checked})}/> 새 초기화 기록, 공지, 예상 지수 알림</label>
+    <label>24시간 초기화 예상 알림 기준<select value={state.settings.forecastThreshold} onChange={e=>void save({forecastThreshold:Number(e.target.value)})}>{[50,60,70,80,90].map(n=><option value={n} key={n}>{n}% 이상으로 상승</option>)}</select></label>
     <label>사용량 자동 갱신<select value={state.settings.refreshMinutes} onChange={e=>void save({refreshMinutes:Number(e.target.value)})}>{[0,1,2,5,10,15].map(n=><option value={n} key={n}>{n?`${n}분`:'끔'}</option>)}</select></label>
     <label>잔여량 알림 기준<select value={state.settings.lowRemaining} onChange={e=>void save({lowRemaining:Number(e.target.value)})}>{[5,10,20,30].map(n=><option value={n} key={n}>{n}% 이하</option>)}</select></label>
     <label>추천 방식<select value={state.settings.strategy} onChange={e=>void save({strategy:e.target.value as FeatureSettings['strategy']})}><option value="remaining">잔여 용량 우선</option><option value="reset-first">초기화 임박 우선</option><option value="priority">지정 계정 우선</option></select></label>

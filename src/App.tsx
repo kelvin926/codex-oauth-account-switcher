@@ -10,6 +10,7 @@ import { getDemoDashboard, readDemoScenario } from './demo/demoData';
 
 import { AnalyticsPanel } from './features/analytics/AnalyticsPanel';
 import { ToolsPanel } from './features/tools/ToolsPanel';
+import { ForecastPanel } from './features/forecast/ForecastPanel';
 import type { FeatureState } from './shared/features';
 
 type AsyncStatus = {
@@ -41,7 +42,10 @@ export default function App() {
         registration: null
       }
   });
-  const [tab,setTab] = useState<'accounts'|'analytics'|'tools'>(()=>isDemoMode && new URLSearchParams(window.location.search).get('tab')==='analytics'?'analytics':'accounts');
+  const [tab,setTab] = useState<'accounts'|'analytics'|'forecast'|'tools'>(()=>{
+    const initial=isDemoMode?new URLSearchParams(window.location.search).get('tab'):null;
+    return initial==='analytics'||initial==='forecast'?initial:'accounts';
+  });
   const [featureState,setFeatureState] = useState<FeatureState|null>(null);
   const [reauthId,setReauthId] = useState<string|undefined>();
   const [modalOpen, setModalOpen] = useState(false);
@@ -140,6 +144,8 @@ export default function App() {
     if(!isDemoMode)void window.desktopApi.getDashboard().then(setDashboard).catch(()=>{});
   }
 
+  useEffect(()=>window.desktopApi?.onShowForecast?.(()=>setTab('forecast')),[]);
+
   const activeAccount = dashboard.accounts.find(
     (account) => account.id === dashboard.state.activeAccountId
   );
@@ -231,9 +237,11 @@ export default function App() {
       <nav className="app-tabs" aria-label="보기 선택">
         <button className={tab==='accounts'?'selected':''} onClick={()=>setTab('accounts')}>계정</button>
         <button className={tab==='analytics'?'selected':''} onClick={()=>setTab('analytics')}>사용량 분석</button>
+        <button className={tab==='forecast'?'selected':''} onClick={()=>setTab('forecast')}>초기화 소식</button>
         <button className={tab==='tools'?'selected':''} onClick={()=>setTab('tools')}>설정과 진단</button>
       </nav>
       {tab==='analytics' && <AnalyticsPanel accounts={dashboard.accounts} demo={isDemoMode}/>}
+      {tab==='forecast' && <ForecastPanel demo={isDemoMode}/>}
       {tab==='tools' && <ToolsPanel demo={isDemoMode} onChanged={reloadDashboard}/>}
       {tab==='accounts' && <section className="card-grid">
         {sortedAccounts.length === 0 ? (

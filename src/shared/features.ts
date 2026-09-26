@@ -1,6 +1,6 @@
 export type RecommendationStrategy = 'remaining' | 'reset-first' | 'priority';
-export type FeatureSettings = { tray: boolean; refreshMinutes: number; notifications: boolean; lowRemaining: number; strategy: RecommendationStrategy };
-export const DEFAULT_SETTINGS: FeatureSettings = { tray: true, refreshMinutes: 5, notifications: true, lowRemaining: 20, strategy: 'remaining' };
+export type FeatureSettings = { tray: boolean; refreshMinutes: number; notifications: boolean; lowRemaining: number; strategy: RecommendationStrategy; forecastEnabled: boolean; forecastNotifications: boolean; forecastThreshold: number };
+export const DEFAULT_SETTINGS: FeatureSettings = { tray: true, refreshMinutes: 5, notifications: true, lowRemaining: 20, strategy: 'remaining', forecastEnabled: true, forecastNotifications: true, forecastThreshold: 70 };
 export type OperationRecord = { at: string; accountId: string | null; stage: string; ok: boolean; message: string };
 export type LoginState = { status: 'idle' | 'starting' | 'waiting' | 'complete' | 'error'; message: string; url?: string; code?: string };
 export type FeatureState = { settings: FeatureSettings; progress: string | null; operations: OperationRecord[]; login: LoginState };
@@ -19,6 +19,9 @@ export type AnalyticsResult = {
   scannedAt: string | null; files: number; pendingFiles: number; warnings: string[]; unknownEvents: number;
 };
 export type FeatureApi = {
+  getForecast(refresh?: boolean): Promise<import('./forecast').ForecastState>;
+  openForecastSource(url: string): Promise<void>;
+  onShowForecast(callback: () => void): () => void;
   getFeatures(): Promise<FeatureState>;
   setFeatureSettings(settings: FeatureSettings): Promise<FeatureState>;
   setAccountPreference(id: string, input: { priority: number; excluded: boolean }): Promise<void>;

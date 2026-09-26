@@ -1,0 +1,30 @@
+export const FORECAST_HOME = 'https://codex.lunarwerx.com/';
+export type ForecastProbability = { probability: number | null; low: number | null; high: number | null };
+export type ResetAnnouncement = { text: string | null; url: string | null; tibo: boolean };
+export type PublicReset = { at: string; gapDays: number | null; announcement: ResetAnnouncement | null };
+export type ForecastSnapshot = {
+  generatedAt: string;
+  sources: { record: string; timeline: string; openaiStatus: string };
+  headline: string;
+  next24Hours: ForecastProbability;
+  nearTerm: ForecastProbability & { hours: number | null };
+  lastResetAt: string | null;
+  totalResets: number | null;
+  resetsLast7Days: number | null;
+  resetsLast30Days: number | null;
+  recentMeanDays: number | null;
+  recentMedianDays: number | null;
+  bankedCount: number | null;
+  accuracy: { status: string; windows: number | null; brier: number | null; baselineBrier: number | null };
+  resets: PublicReset[];
+  hasMore: boolean;
+};
+export type ForecastState = {
+  enabled: boolean;
+  data: ForecastSnapshot | null;
+  fetchedAt: string | null;
+  nextRefreshAt: string | null;
+  stale: boolean;
+  refreshing: boolean;
+  error: string | null;
+};

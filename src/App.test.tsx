@@ -8,6 +8,7 @@ import type { DashboardPayload, DesktopApi } from './shared/desktopApi';
 const dashboard = getDemoDashboard('populated');
 function setupApi() {
   const api: DesktopApi = {
+    getForecast: vi.fn(), openForecastSource: vi.fn(), onShowForecast: vi.fn(),
     getFeatures: vi.fn().mockResolvedValue({settings:{tray:true,refreshMinutes:5,notifications:true,lowRemaining:20,strategy:'remaining'},progress:null,operations:[],login:{status:'idle',message:''}}),
     setFeatureSettings: vi.fn(), setAccountPreference: vi.fn(), inspectResetCredits: vi.fn(), consumeResetCredit: vi.fn(),
     startLogin: vi.fn(), cancelLogin: vi.fn(), diagnose: vi.fn(), recoverLastSwitch: vi.fn(),

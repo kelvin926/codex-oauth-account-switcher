@@ -11,6 +11,17 @@
 - 추천 방식 선택: 잔여 용량, 초기화 임박, 지정 계정 우선. 계정별 우선순위와 추천 제외.
 - 공식 Codex CLI를 통한 계정 추가와 재로그인. 별도 로그인 폴더를 사용하고 재로그인 시 대상 계정을 검증합니다.
 - 전환 단계 표시, 설치와 인증 진단, 최근 작업 기록, 마지막 전환 직전 인증으로 복구.
+- Lunarwerx의 초기화 예상 확률과 범위, 초기화 이력, Tibo 공지와 원문 링크. 새 기록과 공지, 예상 확률 상승에 대한 Windows 알림.
+
+## 초기화 소식
+
+`초기화 소식`에서 [Lunarwerx Codex Forecast](https://codex.lunarwerx.com/)의 공개 API를 조회합니다. 24시간 및 단기 예상 확률과 범위, 최근 초기화 횟수와 간격, 저장된 예측의 검증 상태를 표시합니다. 제3자의 통계적 추정으로 OpenAI의 확정 일정이 아닙니다.
+
+- 초기화 기록에 연결된 Tibo 공지를 표시하며 원문을 브라우저에서 열 수 있습니다. 공개 API는 일반 X 타임라인 전체를 제공하지 않습니다.
+- 전역 초기화 기록에는 초기화권 지급도 포함됩니다. 내 계정의 정기 초기화 시각, 잔여 초기화권과 크레딧은 계정 화면에 별도로 표시합니다.
+- 앱 실행 중 5분 간격으로 갱신합니다. 새 기록과 공지, 24시간 예상 확률이 기준값 이상으로 상승했을 때 알립니다. 기본 기준은 70%이며 설정에서 변경하거나 끌 수 있습니다.
+- 최초 실행에서는 과거 공지를 알리지 않습니다. 반복 알림을 방지하고 재시작 후에도 갱신 대기 시간을 유지합니다. 서버 장애 시 마지막 정상 기록과 경고를 표시하며 오래된 값으로 알림을 만들지 않습니다.
+- 이 연결에는 계정 정보나 인증 토큰을 보내지 않습니다. 출처 시각과 수신 시각을 표시합니다.
 
 ## 사용량 분석을 읽는 방법
 
@@ -35,11 +46,12 @@
 
 ## 검증 범위와 출처
 
-파서, 증분 수집, 계정 귀속, 초기화 경계, 필터 계산, 초기화권 소모 실패 및 로그인 취소 경합을 fixture와 mock으로 검증했습니다. Windows CI는 테스트와 설치 패키지 빌드, 실제 EXE의 계정 화면과 분석 화면 표시를 검사합니다. 실제 사용자 계정 로그인이나 초기화권 소모는 배포 과정에서 실행하지 않습니다.
+파서, 증분 수집, 계정 귀속, 초기화 경계, 필터 계산, 초기화권 소모 실패 및 로그인 취소 경합을 fixture와 mock으로 검증했습니다. 소식 기능은 응답 검증, 장애 시 캐시, 재시작 후 갱신 제한, 누락 응답과 알림 중복을 검증했습니다. Windows CI는 테스트와 설치 패키지 빌드, 실제 EXE의 계정 화면, 분석 화면, 초기화 소식 화면 표시를 검사합니다. 실제 사용자 계정 로그인이나 초기화권 소모는 배포 과정에서 실행하지 않습니다.
 
 - [OpenAI Codex protocol](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs)
 - [OpenAI Codex reset-credit client](https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs)
 - [OpenAI Codex App Server](https://learn.chatgpt.com/docs/app-server)
 - [OpenCodex account controls](https://github.com/lidge-jun/opencodex/blob/main/structure/codex-account-controls.md)
+- [Lunarwerx public API](https://codex.lunarwerx.com/api) 및 [OpenAPI 명세](https://codex.lunarwerx.com/api/openapi.json)
 
 OpenCodex는 기능 설계 참고용으로 사용했으며 구현 코드를 복사하지 않았습니다.
