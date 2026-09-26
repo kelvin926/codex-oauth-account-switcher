@@ -9,6 +9,7 @@ on:
       - 'docs/**'
       - 'README.md'
       - 'AGENTS.md'
+      - '.github/workflows/release-notes.yml'
 
 permissions:
   contents: write
