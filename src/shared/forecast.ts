@@ -2,8 +2,12 @@ export const FORECAST_HOME = 'https://codex.lunarwerx.com/';
 export type ForecastProbability = { probability: number | null; low: number | null; high: number | null };
 export type ResetAnnouncement = { text: string | null; url: string | null; tibo: boolean };
 export type PublicReset = { at: string; gapDays: number | null; announcement: ResetAnnouncement | null };
+export type ForecastPost = { at: string; url: string; text: string; kind: 'incoming' | 'reset' | 'hint' | 'watch'; why: string | null };
 export type ForecastSnapshot = {
   generatedAt: string;
+  source: 'website' | 'api';
+  timelineLive: boolean | null;
+  posts: ForecastPost[];
   sources: { record: string; timeline: string; openaiStatus: string };
   headline: string;
   next24Hours: ForecastProbability;
@@ -12,6 +16,7 @@ export type ForecastSnapshot = {
   totalResets: number | null;
   resetsLast7Days: number | null;
   resetsLast30Days: number | null;
+  pace30Days: number | null;
   recentMeanDays: number | null;
   recentMedianDays: number | null;
   bankedCount: number | null;

@@ -59,6 +59,7 @@ jobs:
             release/smoke-dashboard.png
             release/smoke-analytics.png
             release/smoke-forecast.png
+            release/smoke-forecast-news.png
 
       - name: Upload screen previews
         if: always()

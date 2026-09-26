@@ -811,7 +811,9 @@ function createMainWindow(): BrowserWindow {
         })`);
         logLine('renderer-snapshot', snapshot);
         // DOM readiness precedes Chromium's first painted frame on Windows runners.
-        const section = tab === 'analytics' ? '.analytics-overview' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
+        const section = tab === 'analytics' ? '.analytics-overview' : tab === 'forecast'
+          ? process.env.OAUTH_SWITCHER_DEMO_SECTION === 'news' ? '.forecast-news' : '.forecast-panel'
+          : '.workspace-header';
         await window.webContents.executeJavaScript(`(async () => {
           if (${JSON.stringify(!!tab)}) document.querySelector(${JSON.stringify(section)})?.scrollIntoView({block:'start'});
           await Promise.race([document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise(resolve => setTimeout(resolve, 1000))]);

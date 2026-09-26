@@ -196,6 +196,11 @@ details[open] summary { padding-bottom: 14px; }
 .forecast-feed article { border: 1px solid #ffffffab; background: #ffffff73; padding: 21px; border-radius: 20px; }
 .forecast-feed article b { font-size: 0.88rem; }
 .forecast-feed article p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 0.88rem; }
+.forecast-news { margin: 24px 0; }
+.forecast-news .forecast-feed article p { font-size: 0.95rem; }
+.forecast-news .forecast-badge { margin-top: 0; }
+.forecast-news time { color: var(--muted); font-size: 0.82rem; }
+.forecast-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
 .forecast-badge { display: inline-block; color: #3c6595; background: #d6e7ff8a; padding: 5px 9px; border-radius: 999px; font-size: 0.88rem; margin-top: 10px; }
 .reset-details ul,.diagnostics { list-style: none; padding: 0; }
 .reset-details li,.diagnostics li { padding: 10px 0; border-bottom: 1px solid var(--line); }
