@@ -1,0 +1,42 @@
+name: Update release notes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/RELEASE_*.md'
+      - '.github/workflows/release-notes.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+jobs:
+  update-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { readFileSync } = require('node:fs');
+            const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+            let release;
+            try {
+              release = await github.rest.repos.getReleaseByTag({ ...context.repo, tag: `v${version}` });
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('The Windows build will publish this new version with its release notes.');
+                return;
+              }
+              throw error;
+            }
+            const body = readFileSync(`docs/RELEASE_${version}.md`, 'utf8');
+            if (release.data.body !== body) {
+              await github.rest.repos.updateRelease({ ...context.repo, release_id: release.data.id, body });
+            }

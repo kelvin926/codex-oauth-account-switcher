@@ -13,6 +13,28 @@
 - 전환 단계 표시, 설치와 인증 진단, 최근 작업 기록, 마지막 전환 직전 인증으로 복구.
 - Lunarwerx의 초기화 예상 확률과 범위, 초기화 이력, Tibo 공지와 원문 링크. 새 기록과 공지, 예상 확률 상승에 대한 Windows 알림.
 
+## 화면 예시
+
+Windows 실행 화면의 데모 캡처입니다. 계정, 날짜, 사용량과 예상 확률은 예시 값입니다. 실제 한도 창은 서버 응답에 따라 표시하며, 없는 5시간 제한을 추가하지 않습니다.
+
+### 계정 관리
+
+계정별 잔여량, 초기화 시각, 초기화권과 크레딧을 확인하고 계정을 전환합니다.
+
+![계정 관리 데모 화면](https://raw.githubusercontent.com/kelvin926/codex-oauth-account-switcher/main/docs/media/v0.4.0/accounts.png)
+
+### 사용량 분석
+
+기간, 집계 단위, 계정, 모델과 리즈닝을 선택해 토큰을 조회합니다. 모델별 주간 소모율은 추정값이며, 관측 자료가 없으면 확인 불가로 표시합니다.
+
+![사용량 분석 데모 화면](https://raw.githubusercontent.com/kelvin926/codex-oauth-account-switcher/main/docs/media/v0.4.0/usage-analytics.png)
+
+### 초기화 예상과 소식
+
+Lunarwerx의 24시간 및 단기 예상 확률, 추정 범위와 초기화 통계를 표시합니다. 화면 아래 기록에서 Tibo 공지와 원문 링크를 확인할 수 있습니다.
+
+![초기화 예상과 소식 데모 화면](https://raw.githubusercontent.com/kelvin926/codex-oauth-account-switcher/main/docs/media/v0.4.0/reset-forecast.png)
+
 ## 초기화 소식
 
 `초기화 소식`에서 [Lunarwerx Codex Forecast](https://codex.lunarwerx.com/)의 공개 API를 조회합니다. 24시간 및 단기 예상 확률과 범위, 최근 초기화 횟수와 간격, 저장된 예측의 검증 상태를 표시합니다. 제3자의 통계적 추정으로 OpenAI의 확정 일정이 아닙니다.
