@@ -808,11 +808,23 @@ function createMainWindow(): BrowserWindow {
           bodyText: document.body?.innerText ?? ''
         })`);
         logLine('renderer-snapshot', snapshot);
+        // DOM readiness precedes Chromium's first painted frame on Windows runners.
+        const section = tab === 'analytics' ? '.analysis-filters' : tab === 'forecast' ? '.forecast-panel' : '.card-grid';
+        await window.webContents.executeJavaScript(`(async () => {
+          if (${JSON.stringify(!!tab)}) document.querySelector(${JSON.stringify(section)})?.scrollIntoView({block:'start'});
+          await Promise.race([document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise(resolve => setTimeout(resolve, 1000))]);
+        })()`);
+        await new Promise(resolve => setTimeout(resolve, 300));
         const image = await window.webContents.capturePage();
         mkdirSync(path.dirname(screenshotOutputPath), { recursive: true });
         writeFileSync(screenshotOutputPath, image.toPNG());
         logLine('renderer-capture', screenshotOutputPath);
         if (!ready) throw new Error(`Renderer did not become ready: ${marker}`);
+        const pixels = image.getBitmap(); let darkPixels = 0;
+        for (let i = 0; i < pixels.length && darkPixels < 500; i += 4) {
+          if (pixels[i] < 140 && pixels[i + 1] < 140 && pixels[i + 2] < 140) darkPixels++;
+        }
+        if (darkPixels < 500) throw new Error('Renderer capture contains no painted content');
         if (autoQuitAfterCapture) app.quit();
       })().catch(error => {
         logLine('renderer-capture-error', error instanceof Error ? error.stack : String(error));
