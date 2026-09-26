@@ -54,6 +54,15 @@ jobs:
             release/*.zip
             release/SHA256SUMS.txt
             release/smoke-dashboard.png
+            release/smoke-analytics.png
+
+      - name: Upload screen previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: screen-previews
+          path: |
+            release/smoke-dashboard.png
+            release/smoke-analytics.png
 
       - name: Determine release version
         id: version

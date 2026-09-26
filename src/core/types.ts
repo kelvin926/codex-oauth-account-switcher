@@ -47,6 +47,8 @@ export type AccountRecord = {
   id: string;
   label: string;
   bundlePath: string;
+  priority?: number;
+  excluded?: boolean;
   authSource?: AccountAuthSource;
   canSwitch?: boolean;
   switchBlockedReason?: string | null;

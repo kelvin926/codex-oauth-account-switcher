@@ -1,0 +1,34 @@
+export type RecommendationStrategy = 'remaining' | 'reset-first' | 'priority';
+export type FeatureSettings = { tray: boolean; refreshMinutes: number; notifications: boolean; lowRemaining: number; strategy: RecommendationStrategy };
+export const DEFAULT_SETTINGS: FeatureSettings = { tray: true, refreshMinutes: 5, notifications: true, lowRemaining: 20, strategy: 'remaining' };
+export type OperationRecord = { at: string; accountId: string | null; stage: string; ok: boolean; message: string };
+export type LoginState = { status: 'idle' | 'starting' | 'waiting' | 'complete' | 'error'; message: string; url?: string; code?: string };
+export type FeatureState = { settings: FeatureSettings; progress: string | null; operations: OperationRecord[]; login: LoginState };
+export type ResetCredit = { id: string; title: string | null; expiresAt: string | null; grantedAt: string | null; status: string };
+export type ResetDetails = { available: number | null; credits: ResetCredit[]; pending: boolean; message?: string };
+export type Diagnostic = { name: string; ok: boolean; detail: string };
+export type TokenCounts = { input: number; cached: number; cacheWrite: number; output: number; reasoning: number; total: number };
+export type UsageEvent = TokenCounts & { id: string; at: string; session: string; turn: string; model: string; effort: string; provider: string; accountId: string | null; attribution: 'unknown' | 'observed-login' };
+export type QuotaObservation = { at: string; accountId: string; weeklyUsed: number | null; resetAt: string | null; credits: number | null };
+export type AnalyticsQuery = { start: string; end: string; bucket: 'hour' | 'day' | 'week' | 'month'; accountId?: string; model?: string; effort?: string; page?: number };
+export type AnalyticsRow = TokenCounts & { key: string; count: number; weeklyEstimate: number | null };
+export type AnalyticsResult = {
+  total: AnalyticsRow; timeline: AnalyticsRow[]; dimensions: AnalyticsRow[];
+  events: (UsageEvent & { weeklyEstimate: number | null })[]; eventCount: number;
+  observations: QuotaObservation[]; models: string[]; efforts: string[];
+  scannedAt: string | null; files: number; pendingFiles: number; warnings: string[]; unknownEvents: number;
+};
+export type FeatureApi = {
+  getFeatures(): Promise<FeatureState>;
+  setFeatureSettings(settings: FeatureSettings): Promise<FeatureState>;
+  setAccountPreference(id: string, input: { priority: number; excluded: boolean }): Promise<void>;
+  inspectResetCredits(id: string): Promise<ResetDetails>;
+  consumeResetCredit(id: string): Promise<ResetDetails>;
+  startLogin(label: string, expectedId?: string): Promise<LoginState>;
+  cancelLogin(): Promise<LoginState>;
+  diagnose(): Promise<Diagnostic[]>;
+  recoverLastSwitch(): Promise<void>;
+  getAnalytics(query: AnalyticsQuery): Promise<AnalyticsResult>;
+  scanAnalytics(): Promise<void>;
+  exportAnalytics(query: AnalyticsQuery): Promise<string | null>;
+};

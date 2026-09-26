@@ -1,6 +1,6 @@
 {
   "name": "oauth-account-switcher",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Safe Windows account switcher for the ChatGPT-integrated Codex app.",
   "private": false,
   "type": "module",

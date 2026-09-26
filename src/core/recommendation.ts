@@ -1,3 +1,4 @@
+import type { RecommendationStrategy } from '../shared/features.js';
 import type { AccountRecord } from './types.js';
 import { PLAN_CAPACITY_MULTIPLIER } from './planType.js';
 import { getUsageWindows } from './usageWindows.js';
@@ -37,9 +38,9 @@ export function computeEffectiveRemaining(account: AccountRecord): number {
   )) * (PLAN_CAPACITY_MULTIPLIER[account.planType] ?? 1);
 }
 
-export function chooseRecommendedAccount(accounts: AccountRecord[]): AccountRecord | null {
+export function chooseRecommendedAccount(accounts: AccountRecord[], strategy: RecommendationStrategy = 'remaining'): AccountRecord | null {
   const eligibleAccounts = accounts.filter(
-    (account) => account.status === 'ready' && account.canSwitch !== false &&
+    (account) => account.status === 'ready' && !account.excluded && account.canSwitch !== false &&
       computeEffectiveRemaining(account) > 0
   );
 
@@ -48,6 +49,17 @@ export function chooseRecommendedAccount(accounts: AccountRecord[]): AccountReco
   }
 
   return [...eligibleAccounts].sort((left, right) => {
+    if (strategy === 'priority') {
+      const priority = (right.priority ?? 0) - (left.priority ?? 0);
+      if (priority !== 0) return priority;
+    }
+    if (strategy === 'reset-first') {
+      const reset = (account: AccountRecord) => Math.min(...getUsageWindows(account.usage)
+        .map(w=>w.resetAt ? Date.parse(w.resetAt) : Infinity).filter(t=>t>Date.now()));
+      const difference = reset(left)-reset(right);
+      if (Number.isFinite(difference) && difference !== 0) return difference;
+      if (reset(left) !== reset(right)) return reset(left)<reset(right)?-1:1;
+    }
     const remainingDelta = computeEffectiveRemaining(right) - computeEffectiveRemaining(left);
 
     if (remainingDelta !== 0) {

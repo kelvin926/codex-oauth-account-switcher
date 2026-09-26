@@ -1,3 +1,4 @@
+import { AccountExtras } from './AccountExtras';
 import { Fragment } from 'react';
 import { formatWindowLabel, getUsageWindows } from '../../../core/usageWindows';
 import { PLAN_LABELS } from '../../../shared/desktopApi';
@@ -20,6 +21,9 @@ type AccountCardProps = {
   onRefresh: () => void;
   onDelete: () => void;
   onSwitch: () => void;
+  demo?: boolean;
+  onChanged?: () => void;
+  onLogin?: () => void;
 };
 
 export function AccountCard(props: AccountCardProps) {
@@ -86,6 +90,7 @@ export function AccountCard(props: AccountCardProps) {
       {account.switchBlockedReason ? (
         <p className="card-note">{account.switchBlockedReason}</p>
       ) : null}
+      {account.excluded && <p className="card-note">추천에서 제외된 계정입니다. 수동 전환은 가능합니다.</p>}
       <div className="card-actions">
         <button className="secondary-button" onClick={props.onRefresh}>
           갱신
@@ -102,6 +107,7 @@ export function AccountCard(props: AccountCardProps) {
           이 계정으로 전환
         </button>
       </div>
+      {props.onChanged && props.onLogin && <AccountExtras account={account} demo={props.demo??false} onChanged={props.onChanged} onLogin={props.onLogin}/>}
     </article>
   );
 }

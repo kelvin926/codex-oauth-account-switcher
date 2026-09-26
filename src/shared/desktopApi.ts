@@ -1,3 +1,4 @@
+import type { FeatureApi, FeatureSettings } from './features';
 import type { AccountRecord } from '../core/types';
 export { PLAN_LABELS } from '../core/planType';
 
@@ -18,13 +19,14 @@ export type RegistrationState = {
 export type DashboardPayload = {
   accounts: AccountRecord[];
   state: DesktopState;
+  settings?: FeatureSettings;
 };
 
 export type CaptureAccountInput = {
   label: string;
 };
 
-export type DesktopApi = {
+export type DesktopApi = FeatureApi & {
   getDashboard(): Promise<DashboardPayload>;
   refreshAll(): Promise<DashboardPayload>;
   refreshAccount(accountId: string): Promise<DashboardPayload>;

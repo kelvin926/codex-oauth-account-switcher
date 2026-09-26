@@ -8,6 +8,10 @@ import type { DashboardPayload, DesktopApi } from './shared/desktopApi';
 const dashboard = getDemoDashboard('populated');
 function setupApi() {
   const api: DesktopApi = {
+    getFeatures: vi.fn().mockResolvedValue({settings:{tray:true,refreshMinutes:5,notifications:true,lowRemaining:20,strategy:'remaining'},progress:null,operations:[],login:{status:'idle',message:''}}),
+    setFeatureSettings: vi.fn(), setAccountPreference: vi.fn(), inspectResetCredits: vi.fn(), consumeResetCredit: vi.fn(),
+    startLogin: vi.fn(), cancelLogin: vi.fn(), diagnose: vi.fn(), recoverLastSwitch: vi.fn(),
+    getAnalytics: vi.fn(), scanAnalytics: vi.fn(), exportAnalytics: vi.fn(),
     getDashboard: vi.fn().mockResolvedValue(dashboard),
     refreshAll: vi.fn().mockResolvedValue(dashboard),
     refreshAccount: vi.fn().mockResolvedValue(dashboard),

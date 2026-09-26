@@ -10,6 +10,7 @@ export class SessionVault {
   ) {}
 
   async save(accountId: string, payload: string): Promise<string> {
+    if (!/^[a-zA-Z0-9_-]{1,200}$/.test(accountId)) throw new Error('계정 식별자 형식이 올바르지 않습니다.');
     await mkdir(this.rootDir, { recursive: true });
     const bundlePath = join(this.rootDir, `${accountId}.bundle`);
     const encrypted = this.secretBox.encrypt(payload);

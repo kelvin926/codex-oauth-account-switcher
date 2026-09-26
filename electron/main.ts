@@ -4,7 +4,7 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import { AuthFileAdapter } from '../src/core/adapters/authFileAdapter.js';
 import {
   fetchUsageFromAccessToken,
@@ -44,6 +44,12 @@ import type {
   DesktopState,
   RegistrationState
 } from '../src/shared/desktopApi.js';
+
+import { FeatureRuntime } from './features.js';
+import type { Diagnostic } from '../src/shared/features.js';
+
+let features: FeatureRuntime | null = null;
+let quitting = false;
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 const demoScenario = process.env.OAUTH_SWITCHER_DEMO_SCENARIO ?? null;
@@ -341,7 +347,8 @@ async function buildDashboard(): Promise<DashboardPayload> {
   if (JSON.stringify(state) !== JSON.stringify(previousState)) await saveState(state);
   return {
     accounts: normalizedAccounts,
-    state
+    state,
+    settings: features?.store.settings
   };
 }
 
@@ -370,6 +377,7 @@ async function refreshUsage(account: AccountRecord): Promise<AccountRecord> {
 
   const parsed = parseAuthBundle(bundle);
   const usage = await fetchUsageFromAccessToken(parsed.accessToken, parsed.accountId);
+  await features?.observe(account.id, usage.usage);
 
   return {
     ...account,
@@ -443,9 +451,14 @@ async function refreshAll(): Promise<DashboardPayload> {
 }
 
 async function captureCurrentAuth(input: CaptureAccountInput): Promise<DashboardPayload> {
-  const accounts = await getAccounts();
   const rawAuth = await authAdapter.readCurrentAuth();
+  return captureRawAuth(rawAuth, input.label);
+}
 
+async function captureRawAuth(rawAuth: string, label: string, expectedId?: string, fromLogin = false): Promise<DashboardPayload> {
+  const accounts = await getAccounts();
+  if (expectedId && parseAuthBundle(rawAuth).accountId !== expectedId) throw new Error('다른 계정으로 로그인했습니다. 기존 계정 인증은 변경하지 않았습니다.');
+  if (typeof label !== 'string' || label.length > 100) throw new Error('계정 이름은 100자 이내로 입력하세요.');
   const switchability = getAuthBundleSwitchability(rawAuth);
   const parsed = parseAuthBundle(rawAuth);
   const existingAccount = accounts.find((account) => account.id === parsed.accountId);
@@ -460,11 +473,31 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
     usageResult = null;
   }
 
+  let reopen = false;
+  if (fromLogin) {
+    let activeId: string | null = null;
+    try { activeId = parseAuthBundle(await authAdapter.readCurrentAuth()).accountId; } catch { /* Inactive login. */ }
+    if (activeId === parsed.accountId) {
+      const choice = await dialog.showMessageBox({ type: 'question', buttons: ['취소', '새 인증 적용'], defaultId: 0, cancelId: 0,
+        message: '현재 사용 중인 계정의 새 인증을 적용할까요?', detail: '실행 중인 Codex를 종료하고 인증을 갱신한 뒤 다시 엽니다. 진행 중인 작업을 마친 후 적용하세요.' });
+      if (choice.response !== 1) throw new Error('새 인증 적용을 취소했습니다. 다시 로그인하려면 재시도하세요.');
+      reopen = (await getCodexWindowRuntime()).isOpen;
+      if (reopen) await stopCodexStack();
+      features?.analytics.pulse(null);
+      // An external login may have changed while Codex was stopping.
+      if (parseAuthBundle(await authAdapter.readCurrentAuth()).accountId !== parsed.accountId) throw new Error('현재 계정이 변경되어 새 인증 적용을 중단했습니다.');
+      const backup = await authAdapter.backupCurrentAuth();
+      try { await authAdapter.writeBundle(rawAuth); }
+      catch(error) { await authAdapter.restoreBackup(backup); throw error; }
+    }
+  }
+  if (usageResult) await features?.observe(parsed.accountId, usageResult.usage);
   const bundlePath = await sessionVault.save(parsed.accountId, rawAuth);
   const nextAccount: AccountRecord = {
+    ...existingAccount,
     id: parsed.accountId,
     label:
-      input.label.trim() || existingAccount?.label || usageResult?.email || parsed.email || parsed.accountId,
+      label.trim() || existingAccount?.label || usageResult?.email || parsed.email || parsed.accountId,
     bundlePath,
     authSource: 'codex-auth-file',
     canSwitch: switchability.canSwitch,
@@ -480,6 +513,7 @@ async function captureCurrentAuth(input: CaptureAccountInput): Promise<Dashboard
     nextAccount,
     ...accounts.filter((account) => account.id !== parsed.accountId)
   ]);
+  if (reopen) await launchCodex();
   return buildDashboard();
 }
 
@@ -511,6 +545,11 @@ async function deleteAccount(accountId: string): Promise<DashboardPayload> {
 }
 
 async function switchSelectedAccount(accountId: string): Promise<DashboardPayload> {
+  return features ? features.switchOperation(accountId, () => executeSwitch(accountId)) : executeSwitch(accountId);
+}
+
+async function executeSwitch(accountId: string): Promise<DashboardPayload> {
+  features?.analytics.pulse(null);
   const accounts = await getAccounts();
   const currentState = await loadState();
   const target = accounts.find((account) => account.id === accountId);
@@ -541,6 +580,7 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
     }
   }
 
+  if (features) features.progress = '실행 중인 Codex 확인 중';
   const runtime = await getCodexWindowRuntime();
   const executionPlan = createSwitchExecutionPlan(
     currentState.autoRestartOnSwitch,
@@ -548,6 +588,7 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
   );
 
   if (executionPlan.shouldStop) {
+    if (features) features.progress = 'Codex 종료 중';
     await stopCodexStack();
   }
 
@@ -558,7 +599,8 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
       runtimeBeforeSwap.isOpen
     );
     if (runtimeBeforeSwap.isOpen && recheckedExecutionPlan.shouldStop) {
-      await stopCodexStack();
+      if (features) features.progress = 'Codex 종료 중';
+    await stopCodexStack();
     }
 
     // Checkpoint only after the final shutdown; a respawned app may rotate tokens.
@@ -576,6 +618,9 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
       await saveAccounts(checkpointedAccounts);
     }
 
+    if (features) features.progress = '인증 백업 및 교체 중';
+    const recoveryBackup = await authAdapter.backupCurrentAuth();
+    await writeJsonAtomic(path.join(dataRoot, 'last-switch.json'), { targetId: accountId, backup: recoveryBackup, state: currentState });
     await switchAccount(target, bundle, authAdapter, {
       markPending: async () => {
         const verificationState = createPendingVerification(accountId);
@@ -600,6 +645,7 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
   }
 
   if (executionPlan.shouldLaunch) {
+    if (features) features.progress = 'Codex 재실행 중';
     try {
       await launchCodex();
     } catch {
@@ -614,7 +660,7 @@ async function switchSelectedAccount(accountId: string): Promise<DashboardPayloa
 
 async function switchRecommendedAccount(): Promise<DashboardPayload> {
   const dashboard = await buildDashboard();
-  const recommended = chooseRecommendedAccount(dashboard.accounts);
+  const recommended = chooseRecommendedAccount(dashboard.accounts, features?.store.settings.strategy);
 
   if (!recommended) {
     throw new Error('전환할 추천 계정이 없습니다.');
@@ -645,6 +691,81 @@ async function setAutoRestartOnSwitch(enabled: boolean): Promise<DashboardPayloa
   });
 
   return buildDashboard();
+}
+
+async function getAccountAccessToken(id: string): Promise<string> {
+  const account = (await getAccounts()).find(a=>a.id===id);
+  if (!account) throw new Error('계정을 찾을 수 없습니다.');
+  let raw = await sessionVault.load(account.bundlePath);
+  try {
+    const active = await authAdapter.readCurrentAuth();
+    if (parseAuthBundle(active).accountId === id) raw = active;
+  } catch { /* Use the encrypted saved bundle. */ }
+  if (parseAuthBundle(raw).accountId !== id) throw new Error('인증 계정이 일치하지 않습니다.');
+  if (isAuthBundleExpired(raw)) throw new Error('인증이 만료됐습니다. 이 계정을 다시 로그인해 주세요.');
+  return parseAuthBundle(raw).accessToken;
+}
+
+async function resolveCodexCli(): Promise<string> {
+  const { stdout } = await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$cmd = Get-Command codex.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($cmd) { $cmd.Source; exit }
+$packages = @(Get-AppxPackage -Name OpenAI.Codex -ErrorAction SilentlyContinue) + @(Get-AppxPackage -Name OpenAI.ChatGPT -ErrorAction SilentlyContinue)
+foreach ($p in $packages) {
+  $exe = Get-ChildItem -LiteralPath $p.InstallLocation -Filter codex.exe -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($exe) { $exe.FullName; exit }
+}
+$shim = Get-Command codex.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($shim) {
+  $root = Join-Path (Split-Path $shim.Source) 'node_modules/@openai'
+  $exe = Get-ChildItem -LiteralPath $root -Filter codex.exe -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($exe) { $exe.FullName; exit }
+}
+throw 'Codex CLI executable not found'
+`);
+  const executable = stdout.trim();
+  if (!path.isAbsolute(executable) || path.basename(executable).toLowerCase() !== 'codex.exe') throw new Error('Codex CLI를 찾지 못했습니다. 최신 Codex 앱 또는 CLI를 설치해 주세요.');
+  return executable;
+}
+
+async function diagnoseInstallation(): Promise<Diagnostic[]> {
+  const results: Diagnostic[] = [];
+  try {
+    const parsed = parseAuthBundle(await authAdapter.readCurrentAuth());
+    results.push({name:'현재 인증',ok:true,detail:`계정 ${parsed.accountId.slice(0,8)} / 파일 읽기 정상`});
+  } catch { results.push({name:'현재 인증',ok:false,detail:'auth.json을 읽지 못했습니다. 로그인 또는 저장된 계정 전환을 사용하세요.'}); }
+  try { const runtime=await getCodexWindowRuntime(); results.push({name:'Codex 프로세스',ok:true,detail:runtime.isOpen?`${runtime.processCount}개 실행 중`:'종료 상태'}); }
+  catch { results.push({name:'Codex 프로세스',ok:false,detail:'PowerShell 실행을 확인해 주세요.'}); }
+  try { results.push({name:'로그인용 CLI',ok:true,detail:await resolveCodexCli()}); }
+  catch { results.push({name:'로그인용 CLI',ok:false,detail:'Codex 앱 또는 CLI를 업데이트해 주세요. 현재 계정 저장 기능은 계속 사용할 수 있습니다.'}); }
+  const accounts=await getAccounts();
+  for(const account of accounts) {
+    try { const raw=await sessionVault.load(account.bundlePath); const valid=parseAuthBundle(raw).accountId===account.id; results.push({name:account.label,ok:valid&&!isAuthBundleExpired(raw),detail:!valid?'계정 불일치':isAuthBundleExpired(raw)?'인증 만료: 재로그인 필요':'저장된 인증 정상'}); }
+    catch { results.push({name:account.label,ok:false,detail:'저장된 인증을 읽지 못했습니다. 다시 로그인해 주세요.'}); }
+  }
+  results.push({name:'세션 기록 위치',ok:true,detail:codexHome});
+  return results;
+}
+
+async function recoverLastSwitch(): Promise<void> {
+  let journal: any;
+  try { journal=JSON.parse(await readFile(path.join(dataRoot,'last-switch.json'),'utf8')); }
+  catch { throw new Error('복구할 마지막 전환 기록이 없습니다.'); }
+  if (typeof journal.targetId !== 'string' || !journal.state || (journal.backup!==null && (typeof journal.backup!=='string' || path.dirname(journal.backup)!==backupAuthRoot))) throw new Error('복구 기록을 확인할 수 없습니다.');
+  const current=parseAuthBundle(await authAdapter.readCurrentAuth());
+  if(current.accountId!==journal.targetId) throw new Error('마지막 전환 이후 로그인 계정이 바뀌었습니다. 저장된 계정을 직접 선택해 주세요.');
+  features?.analytics.pulse(null);
+  await stopCodexStack();
+  // Verify again after shutdown because Codex can rotate credentials while exiting.
+  if(parseAuthBundle(await authAdapter.readCurrentAuth()).accountId!==journal.targetId) throw new Error('종료 중 로그인 계정이 바뀌어 복구를 중단했습니다.');
+  const latestAuth = await authAdapter.readCurrentAuth();
+  const checkpointed = await checkpointCurrentAccount(await getAccounts(), latestAuth, (id, raw) => sessionVault.save(id, raw));
+  await saveAccounts(checkpointed);
+  await authAdapter.restoreBackup(journal.backup);
+  await saveState({...journal.state,pendingVerificationAccountId:null,pendingVerificationSawStop:false});
+  await rm(path.join(dataRoot,'last-switch.json'),{force:true});
+  await features?.store.record(null,'복구',true,'마지막 전환 직전의 인증으로 복구했습니다.');
 }
 
 function createMainWindow(): BrowserWindow {
@@ -716,10 +837,13 @@ function createMainWindow(): BrowserWindow {
     const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
     logLine('loading-file', indexPath);
     void window.loadFile(indexPath, {
-      search: demoScenario ? `demo=${encodeURIComponent(demoScenario)}` : undefined
+      search: demoScenario ? `demo=${encodeURIComponent(demoScenario)}&tab=${process.env.OAUTH_SWITCHER_DEMO_TAB === 'analytics' ? 'analytics' : 'accounts'}` : undefined
     });
   }
 
+  window.on('close', (event) => {
+    if (!quitting && features?.store.settings.tray) { event.preventDefault(); window.hide(); }
+  });
   window.removeMenu();
   window.setMenuBarVisibility(false);
 
@@ -736,7 +860,24 @@ if (!hasInstanceLock) {
     window?.show();
     window?.focus();
   });
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    if (!demoScenario) {
+      await ensureDataRoot();
+      await rm(path.join(dataRoot, 'login-staging'), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      features = new FeatureRuntime({
+        root: dataRoot, home: codexHome, serialize: serializeOperation,
+        dashboard: buildDashboard, refresh: refreshAll, switchAccount: switchSelectedAccount,
+        token: getAccountAccessToken,
+        preference: async (id, input) => {
+          const accounts = await getAccounts();
+          if (!accounts.some(a=>a.id===id)) throw new Error('계정을 찾을 수 없습니다.');
+          await saveAccounts(accounts.map(a=>a.id===id?{...a,...input}:a));
+        },
+        capture: async (raw,label,id) => { await captureRawAuth(raw,label,id,true); },
+        cli: resolveCodexCli, diagnose: diagnoseInstallation, recover: recoverLastSwitch
+      });
+      await features.initialize();
+    }
     Menu.setApplicationMenu(null);
     ipcMain.handle('dashboard:get', () => serializeOperation(buildDashboard));
     ipcMain.handle('account:refresh-all', () => serializeOperation(refreshAll));
@@ -769,6 +910,8 @@ if (!hasInstanceLock) {
     });
   });
 }
+
+app.on('before-quit', () => { quitting = true; void features?.dispose(); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

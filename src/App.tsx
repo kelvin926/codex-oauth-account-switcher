@@ -8,6 +8,10 @@ import { sortAccounts } from './features/accounts/state';
 import { getRegistrationHelpText } from './features/registration/registerAccountFlow';
 import { getDemoDashboard, readDemoScenario } from './demo/demoData';
 
+import { AnalyticsPanel } from './features/analytics/AnalyticsPanel';
+import { ToolsPanel } from './features/tools/ToolsPanel';
+import type { FeatureState } from './shared/features';
+
 type AsyncStatus = {
   kind: 'idle' | 'error' | 'success';
   message: string;
@@ -37,12 +41,15 @@ export default function App() {
         registration: null
       }
   });
+  const [tab,setTab] = useState<'accounts'|'analytics'|'tools'>(()=>isDemoMode && new URLSearchParams(window.location.search).get('tab')==='analytics'?'analytics':'accounts');
+  const [featureState,setFeatureState] = useState<FeatureState|null>(null);
+  const [reauthId,setReauthId] = useState<string|undefined>();
   const [modalOpen, setModalOpen] = useState(false);
   const [status, setStatus] = useState<AsyncStatus>({ kind: 'idle', message: '' });
 
   const recommended = useMemo(
-    () => chooseRecommendedAccount(dashboard.accounts),
-    [dashboard.accounts]
+    () => chooseRecommendedAccount(dashboard.accounts, dashboard.settings?.strategy),
+    [dashboard.accounts, dashboard.settings?.strategy]
   );
   const sortedAccounts = useMemo(
     () => sortAccounts(dashboard.accounts, dashboard.state),
@@ -121,6 +128,18 @@ export default function App() {
     }
   }, [dashboard.state.pendingVerificationAccountId, status, switchAppliedMessage]);
 
+  useEffect(() => {
+    if(isDemoMode || !window.desktopApi.getFeatures) return;
+    let current=true;
+    const poll=()=>{void window.desktopApi.getFeatures().then(value=>{if(current)setFeatureState(value);}).catch(()=>{});};
+    poll();const timer=window.setInterval(poll,1000);
+    return()=>{current=false;window.clearInterval(timer);};
+  },[isDemoMode]);
+
+  function reloadDashboard(){
+    if(!isDemoMode)void window.desktopApi.getDashboard().then(setDashboard).catch(()=>{});
+  }
+
   const activeAccount = dashboard.accounts.find(
     (account) => account.id === dashboard.state.activeAccountId
   );
@@ -158,12 +177,12 @@ export default function App() {
     }
   }
 
-  const bannerMessage = busy ? '처리 중입니다. 잠시 기다려 주세요.' :
+  const bannerMessage = featureState?.progress ?? (busy ? '처리 중입니다. 잠시 기다려 주세요.' :
     status.kind === 'idle'
       ? isDemoMode
         ? '공개 저장소용 데모 화면입니다. 실제 계정 정보 없이 기능 예시만 표시합니다.'
         : getRegistrationHelpText(dashboard.state.registration)
-      : status.message;
+      : status.message);
 
   return (
     <main className="app-shell" aria-busy={busy}>
@@ -201,7 +220,7 @@ export default function App() {
             'ChatGPT/Codex를 안전하게 종료했습니다.'
           )
         }
-        onAddAccount={() => setModalOpen(true)}
+        onAddAccount={() => {setReauthId(undefined);setModalOpen(true);}}
       />
 
       <section className={`status-banner ${status.kind}`}>
@@ -209,7 +228,14 @@ export default function App() {
         <span>{bannerMessage}</span>
       </section>
 
-      <section className="card-grid">
+      <nav className="app-tabs" aria-label="보기 선택">
+        <button className={tab==='accounts'?'selected':''} onClick={()=>setTab('accounts')}>계정</button>
+        <button className={tab==='analytics'?'selected':''} onClick={()=>setTab('analytics')}>사용량 분석</button>
+        <button className={tab==='tools'?'selected':''} onClick={()=>setTab('tools')}>설정과 진단</button>
+      </nav>
+      {tab==='analytics' && <AnalyticsPanel accounts={dashboard.accounts} demo={isDemoMode}/>}
+      {tab==='tools' && <ToolsPanel demo={isDemoMode} onChanged={reloadDashboard}/>}
+      {tab==='accounts' && <section className="card-grid">
         {sortedAccounts.length === 0 ? (
           <div className="empty-state">
             <h2>아직 등록된 계정이 없습니다</h2>
@@ -224,6 +250,9 @@ export default function App() {
           <AccountCard
             key={account.id}
             account={account}
+            demo={isDemoMode}
+            onChanged={reloadDashboard}
+            onLogin={()=>{setReauthId(account.id);setModalOpen(true);}}
             state={dashboard.state}
             recommendedId={recommended?.id ?? null}
             onRefresh={() =>
@@ -248,11 +277,24 @@ export default function App() {
             }
           />
         ))}
-      </section>
+      </section>}
 
       <AddAccountModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        key={reauthId??'add'}
+        reauthLabel={dashboard.accounts.find(a=>a.id===reauthId)?.label}
+        login={featureState?.login}
+        onLogin={async(label)=>{
+          if(isDemoMode)return;
+          try { const login=await window.desktopApi.startLogin(label,reauthId);setFeatureState(s=>s?{...s,login}:s); }
+          catch(error){setStatus({kind:'error',message:error instanceof Error?error.message:String(error)});}
+        }}
+        onCancelLogin={()=>{void window.desktopApi.cancelLogin().then(login=>setFeatureState(s=>s?{...s,login}:s));}}
+        onClose={() => {
+          setModalOpen(false);
+          if(!isDemoMode && ['waiting','starting'].includes(featureState?.login.status??''))void window.desktopApi.cancelLogin();
+          reloadDashboard();
+        }}
         onCapture={async (label) => {
           const saved = await runAction(
             () => window.desktopApi.captureCurrentAuth({ label }),
