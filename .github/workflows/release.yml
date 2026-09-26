@@ -37,6 +37,8 @@ jobs:
         run: npm test
       - name: Build Windows artifacts
         run: npm run dist:ci
+      - name: Verify Windows startup registration
+        run: npx --no-install electron scripts/smoke-windows-startup.mjs
       - name: Smoke test the packaged executable
         run: node scripts/smoke-windows.mjs
       - name: Generate SHA256 checksums

@@ -797,7 +797,7 @@ function createMainWindow(): BrowserWindow {
     if (screenshotOutputPath) {
       void (async () => {
         const tab = process.env.OAUTH_SWITCHER_DEMO_TAB;
-        const marker = tab === 'analytics' ? '모델과 리즈닝별 상세' : tab === 'forecast' ? '초기화 기록과 Tibo 공지' : '계정 추가';
+        const marker = tab === 'analytics' ? '모델별 사용 내역' : tab === 'forecast' ? '초기화 기록과 Tibo 공지' : '계정 추가';
         let ready = false;
         for (let attempt = 0; attempt < 50 && !window.isDestroyed(); attempt++) {
           ready = await window.webContents.executeJavaScript(`document.body?.innerText.includes(${JSON.stringify(marker)})`);
@@ -811,7 +811,7 @@ function createMainWindow(): BrowserWindow {
         })`);
         logLine('renderer-snapshot', snapshot);
         // DOM readiness precedes Chromium's first painted frame on Windows runners.
-        const section = tab === 'analytics' ? '.analytics-stats' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
+        const section = tab === 'analytics' ? '.analytics-overview' : tab === 'forecast' ? '.forecast-panel' : '.workspace-header';
         await window.webContents.executeJavaScript(`(async () => {
           if (${JSON.stringify(!!tab)}) document.querySelector(${JSON.stringify(section)})?.scrollIntoView({block:'start'});
           await Promise.race([document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise(resolve => setTimeout(resolve, 1000))]);

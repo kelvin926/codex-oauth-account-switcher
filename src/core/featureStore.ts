@@ -1,9 +1,9 @@
 import { readJsonWithBackup, writeJsonAtomic } from './atomicFile.js';
 import type { QuotaNoticeState } from './quotaNotifications.js';
-import { DEFAULT_SETTINGS, type FeatureSettings, type OperationRecord } from '../shared/features.js';
+import { DEFAULT_SETTINGS, LOW_REMAINING_OPTIONS, type FeatureSettings, type OperationRecord } from '../shared/features.js';
 export function validateSettings(value: FeatureSettings): FeatureSettings {
   if (!value || typeof value.startAtLogin!=='boolean' || typeof value.weeklyResetNotifications!=='boolean' || typeof value.tray!=='boolean' || typeof value.notifications!=='boolean' ||
-    ![0,1,2,5,10,15].includes(value.refreshMinutes) || ![5,10,20,30].includes(value.lowRemaining) ||
+    ![0,1,2,5,10,15].includes(value.refreshMinutes) || !LOW_REMAINING_OPTIONS.includes(value.lowRemaining) ||
     !['remaining','reset-first','priority'].includes(value.strategy) || typeof value.forecastEnabled!=='boolean' ||
     typeof value.forecastNotifications!=='boolean' || ![50,60,70,80,90].includes(value.forecastThreshold)) throw new Error('설정 값이 올바르지 않습니다.');
   return {startAtLogin:value.startAtLogin,weeklyResetNotifications:value.weeklyResetNotifications,tray:value.tray,notifications:value.notifications,refreshMinutes:value.refreshMinutes,lowRemaining:value.lowRemaining,strategy:value.strategy,

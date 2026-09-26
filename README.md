@@ -2,9 +2,9 @@
 
 Windows용 ChatGPT/Codex에서 여러 ChatGPT 계정의 인증을 안전하게 저장하고 전환하는 데스크톱 앱입니다.
 
-v0.6.0은 스크롤 시 패널 블러와 불필요한 화면 재생성을 줄이고, 글자를 키웠습니다. 설명은 마우스 또는 키보드로 여는 도움말과 접힌 상세 영역으로 옮겼습니다. Windows 자동 시작, 주간 한도 복구 알림, API 환산 비용과 캐시 적중률을 제공합니다.
+v0.6.1은 Windows 자동 시작 등록 오류를 고치고, 잔여량 1% 이하 알림을 추가했습니다. 사용량 분석은 사용 금액, 남은 주간 한도, 캐시 절약액을 먼저 보여줍니다. 어려운 용어는 쉬운 이름과 도움말로 설명합니다.
 
-[v0.6.0 변경 안내](docs/RELEASE_0.6.0.md)
+[v0.6.1 변경 안내](docs/RELEASE_0.6.1.md)
 
 ## 화면 예시
 
@@ -14,23 +14,24 @@ Windows 실행 화면의 데모 캡처입니다. 계정, 날짜, 사용량과 �
 
 계정별 잔여량, 초기화 시각, 초기화권과 크레딧을 확인하고 계정을 전환합니다.
 
-![계정 관리 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.0/smoke-dashboard.png)
+![계정 관리 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.1/smoke-dashboard.png)
 
 ### 사용량 분석
 
-기간, 집계 단위, 계정, 모델과 리즈닝별 토큰, API 환산 비용과 캐시 적중률을 조회합니다. 같은 계정의 한도 관측과 비용으로 주간 100% 금액을 추정합니다. 모델별 주간 소모율은 추정값이며, 관측 자료가 없으면 확인 불가로 표시합니다.
+사용 금액, 처리한 글의 양, 입력 재사용 비율과 절약액을 쉬운 설명으로 확인합니다. 생각 깊이(리즈닝)는 보통, 깊게, 매우 깊게처럼 표시하고 원래 옵션 이름도 함께 제공합니다. 기간, 계정, 모델과 생각 깊이로 필터링할 수 있습니다. 같은 계정의 한도 관측과 비용으로 주간 100% 금액을 추정합니다. 모델별 주간 소모율은 추정값이며, 관측 자료가 없으면 확인 불가로 표시합니다.
 
-![사용량 분석 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.0/smoke-analytics.png)
+![사용량 분석 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.1/smoke-analytics.png)
 
 ### 초기화 예상과 소식
 
 Lunarwerx의 24시간 및 단기 예상 확률, 추정 범위와 초기화 통계를 표시합니다. 화면 아래 기록에서 Tibo 공지와 원문 링크를 확인할 수 있습니다.
 
-![초기화 예상과 소식 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.0/smoke-forecast.png)
+![초기화 예상과 소식 데모 화면](https://github.com/kelvin926/codex-oauth-account-switcher/releases/download/v0.6.1/smoke-forecast.png)
 
 ## 주요 기능
 
 - **자동 실행과 갱신**: Windows 자동 시작과 5분 간격 사용량 갱신이 기본값입니다. 설정에서 자동 시작과 1/2/5/10/15분 갱신 또는 끄기를 선택합니다. 트레이 유지 시 자동 시작은 창을 띄우지 않습니다.
+- **잔여량 부족 알림**: 1/5/10/20/30% 이하 중 선택합니다. 기준을 바꾸면 다음 갱신부터 적용합니다. 같은 부족 상태에서는 반복하지 않습니다.
 - **주간 한도 초기화 알림**: 정기 초기화 시각이 같아도 사용률이 1%p 이상 감소하면 복구를 알립니다. 마지막 유효 관측을 저장하여 앱 재시작 후에도 비교합니다. Windows 알림 허용과 앱 실행이 필요합니다.
 - **비용과 캐시**: API Standard USD 환산액, 캐시 적중률과 순절감액, 주간 한도 100%와 사용/잔여 금액을 추정합니다. 실제 구독 청구액이 아니며 자세한 가정과 지원 단가는 [v0.6.0 안내](docs/RELEASE_0.6.0.md)를 확인하세요.
 
@@ -67,8 +68,8 @@ Lunarwerx의 24시간 및 단기 예상 확률, 추정 범위와 초기화 통�
 
 [GitHub Releases](https://github.com/kelvin926/codex-oauth-account-switcher/releases/latest)에서 다음 중 하나를 받습니다.
 
-- `OAuth.Account.Switcher-0.6.0-x64.exe`: 설치 프로그램
-- `OAuth.Account.Switcher-0.6.0-x64.zip`: 포터블 패키지
+- `OAuth.Account.Switcher-0.6.1-x64.exe`: 설치 프로그램
+- `OAuth.Account.Switcher-0.6.1-x64.zip`: 포터블 패키지
 
 기존 v0.1.x 위에 설치해도 `%USERPROFILE%\.oauth-account-switcher` 데이터는 그대로 사용합니다.
 
@@ -145,6 +146,6 @@ npm run dist:win
 
 테스트에는 JSON 손상 복구, 계정 카탈로그 재구성, refresh token 체크포인트, 전환 롤백, ChatGPT/Codex 프로세스 스크립트, 채팅 및 설정 파일 불변성 검증이 포함됩니다.
 
-자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 최신 변경 내역은 [docs/RELEASE_0.6.0.md](docs/RELEASE_0.6.0.md)를 참고하세요.
+자세한 사용 절차는 [docs/USAGE.md](docs/USAGE.md), 최신 변경 내역은 [docs/RELEASE_0.6.1.md](docs/RELEASE_0.6.1.md)를 참고하세요.
 
 `초기화 소식`에서는 [Lunarwerx Codex Forecast](https://codex.lunarwerx.com/)의 초기화 예상 확률과 범위, 초기화 이력, 이력에 연결된 Tibo 공지를 볼 수 있습니다. 5분 간격으로 갱신하며 새 기록, 공지, 예상 확률 상승 시 Windows 알림을 제공합니다. 제3자의 예상이며 내 계정의 초기화나 잔여 크레딧을 보장하지 않습니다. 데이터가 오래되거나 연결이 끊기면 마지막 정상 기록과 경고를 표시합니다. 이 공개 데이터 연결에는 계정 인증을 보내지 않습니다.

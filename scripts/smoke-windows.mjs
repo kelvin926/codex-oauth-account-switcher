@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 const executable = path.resolve('release/win-unpacked/OAuth Account Switcher.exe');
 const screens = [
   { tab: 'accounts', name: 'dashboard', markers: ['메인 작업용', '1주 남은 양', '초기화권', '3개', '1,234.56 크레딧'] },
-  { tab: 'analytics', name: 'analytics', markers: ['모델과 리즈닝별 상세', '통계 CSV', 'GPT-6 Sol', '캐시 적중률', 'API 환산액', '한도 100% 환산'] },
+  { tab: 'analytics', name: 'analytics', markers: ['모델별 사용 내역', 'CSV로 저장', 'GPT-6 Sol', '캐시 적중률', '사용 금액 (추정)', '주간 한도 100%를 금액으로', '남음 70.0%', '실제 청구 금액은 아닙니다.'] },
   { tab: 'forecast', name: 'forecast', markers: ['초기화 기록과 Tibo 공지', '59.2%', 'Lunarwerx'] }
 ];
 for (const { tab, name, markers } of screens) {

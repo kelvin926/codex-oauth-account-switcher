@@ -1,4 +1,5 @@
 export type RecommendationStrategy = 'remaining' | 'reset-first' | 'priority';
+export const LOW_REMAINING_OPTIONS = [1,5,10,20,30];
 export type FeatureSettings = { startAtLogin: boolean; tray: boolean; refreshMinutes: number; notifications: boolean; weeklyResetNotifications: boolean; lowRemaining: number; strategy: RecommendationStrategy; forecastEnabled: boolean; forecastNotifications: boolean; forecastThreshold: number };
 export const DEFAULT_SETTINGS: FeatureSettings = { startAtLogin: true, tray: true, refreshMinutes: 5, notifications: true, weeklyResetNotifications: true, lowRemaining: 20, strategy: 'remaining', forecastEnabled: true, forecastNotifications: true, forecastThreshold: 70 };
 export type OperationRecord = { at: string; accountId: string | null; stage: string; ok: boolean; message: string };

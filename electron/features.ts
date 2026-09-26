@@ -14,6 +14,7 @@ import type { AnalyticsQuery, Diagnostic, FeatureSettings, FeatureState } from '
 import { writeFileAtomic } from '../src/core/atomicFile.js';
 import { LoginManager } from './login.js';
 import { ForecastService, forecastLink } from '../src/core/forecast.js';
+import { WindowsStartup } from './windowsStartup.js';
 
 type Dependencies = {
   root: string; home: string;
@@ -31,6 +32,7 @@ export class FeatureRuntime {
   readonly login:LoginManager;
   readonly forecast:ForecastService;
   private reset:ResetCreditService;
+  private readonly startup = new WindowsStartup(app, process.execPath);
   private tray:Tray|null=null;
   private lastDashboard:DashboardPayload|null=null;
   private timer:ReturnType<typeof setInterval>|null=null;
@@ -56,15 +58,14 @@ export class FeatureRuntime {
       this.store.quotaStates[row.accountId] = {at:row.at,weeklyAt:row.at,used:row.weeklyUsed,reset:row.resetAt,low:row.weeklyUsed! >= 100-this.store.settings.lowRemaining};
     }
     if (process.platform === 'win32' && app.isPackaged) {
-      if (!this.store.startupConfigured) {
-        try { this.configureStartup(this.store.settings.startAtLogin); this.store.startupConfigured = true; }
-        catch (error) { this.store.settings.startAtLogin = false; await this.store.record(null,'자동 시작',false,error instanceof Error?error.message:'등록 실패'); }
-        await this.store.save();
-      } else {
-        const login = app.getLoginItemSettings({path:process.execPath,args:['--startup']});
-        // Respect an explicit disable in Windows Task Manager.
-        this.store.settings.startAtLogin = login.openAtLogin && login.executableWillLaunchAtLogin;
+      try {
+        this.store.settings.startAtLogin = this.startup.reconcile(this.store.startupConfigured,this.store.settings.startAtLogin);
+        this.store.startupConfigured = true;
+      } catch (error) {
+        this.store.settings.startAtLogin = false;
+        await this.store.record(null,'자동 시작',false,error instanceof Error?error.message:'등록 실패');
       }
+      await this.store.save();
     } else this.store.settings.startAtLogin = false;
     this.configureTray(); this.register();
     this.timer=setInterval(()=>this.tick(),30_000);
@@ -75,9 +76,8 @@ export class FeatureRuntime {
       if (enabled) throw new Error('Windows 설치 버전에서 자동 시작을 사용할 수 있습니다.');
       return;
     }
-    app.setLoginItemSettings({openAtLogin:enabled,path:process.execPath,args:['--startup'],name:'CodexOAuthAccountSwitcher',enabled});
-    const actual = app.getLoginItemSettings({path:process.execPath,args:['--startup']});
-    if (enabled && (!actual.openAtLogin || !actual.executableWillLaunchAtLogin)) throw new Error('Windows 자동 시작 등록을 확인하지 못했습니다.');
+    this.startup.set(enabled);
+    this.store.startupConfigured = true;
   }
   state():FeatureState{return {settings:this.store.settings,operations:[...this.store.operations].reverse(),progress:this.progress,login:this.login.state};}
   show(){const window=BrowserWindow.getAllWindows()[0];if(window?.isMinimized())window.restore();window?.show();window?.focus();}
@@ -158,7 +158,14 @@ export class FeatureRuntime {
     ipcMain.handle('features:get',()=>this.state()); // Must remain responsive while a switch is in progress.
     ipcMain.handle('forecast:get',(_event,refresh:boolean)=>refresh?this.forecast.refresh():this.forecast.state());
     ipcMain.handle('forecast:open',async(_event,value:unknown)=>{const url=forecastLink(value);if(!url)throw new Error('지원하지 않는 출처 링크입니다.');await shell.openExternal(url);});
-    handle('features:settings',async(settings:FeatureSettings)=>{const next=validateSettings(settings);if(next.startAtLogin!==this.store.settings.startAtLogin)this.configureStartup(next.startAtLogin);this.store.settings=next;await this.store.save();this.configureTray();return this.state();});
+    handle('features:settings',async(settings:FeatureSettings)=>{
+      const next=validateSettings(settings);
+      if(next.startAtLogin!==this.store.settings.startAtLogin)this.configureStartup(next.startAtLogin);
+      if(next.lowRemaining!==this.store.settings.lowRemaining || (next.notifications&&!this.store.settings.notifications)) {
+        for(const state of Object.values(this.store.quotaStates)) state.low=false;
+      }
+      this.store.settings=next;await this.store.save();this.configureTray();return this.state();
+    });
     handle('features:preference',async(id:string,input:{priority:number;excluded:boolean})=>{
       if(!Number.isInteger(input?.priority)||input.priority< -2||input.priority>2||typeof input.excluded!=='boolean')throw new Error('계정 우선순위 값 오류');
       await this.deps.preference(id,input);
