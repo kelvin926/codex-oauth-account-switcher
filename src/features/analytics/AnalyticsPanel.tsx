@@ -48,6 +48,7 @@ export function AnalyticsPanel({accounts,demo}:{accounts:AccountRecord[];demo:bo
   const chartValue=(r:AnalyticsRow)=>chartMetric==='cost'?r.cost.usd:r.total;
   const max=Math.max(1,...(result?.timeline.map(chartValue)??[]));
   const chartWidth=Math.max(800,(result?.timeline.length??0)*38+64);
+  const labelEvery=Math.max(1,Math.ceil((result?.timeline.length??0)*(bucket==='hour'?100:65)/(chartWidth-64)));
   const selectedAccount=accounts.find(a=>a.id===accountId);
   const budget=result?.weeklyBudget;
   const hasAccount=!!accountId&&accountId!=='unknown';
@@ -103,7 +104,7 @@ export function AnalyticsPanel({accounts,demo}:{accounts:AccountRecord[];demo:bo
       <div className="panel-heading"><h3>시간에 따른 사용량</h3><label className="chart-choice">그래프<select aria-label="그래프 수치" value={chartMetric} onChange={e=>setChartMetric(e.target.value as 'tokens'|'cost')}><option value="cost">금액 (달러, 추정)</option><option value="tokens">처리량 (토큰)</option></select></label></div>
       <div className="chart-scroll"><svg viewBox={`0 0 ${chartWidth} 220`} width={chartWidth} height="220" role="img" aria-label={chartMetric==='tokens'?'기간별 총토큰 막대 그래프':'기간별 환산 금액 막대 그래프'}>
         {[0,.5,1].map(ratio=><g key={ratio}><line x1="64" y1={175-ratio*140} x2={chartWidth} y2={175-ratio*140}/><text x="56" y={180-ratio*140} textAnchor="end" fontSize="13">{chartMetric==='cost'?money(max*ratio):(max*ratio).toLocaleString('ko-KR',{notation:'compact',maximumFractionDigits:1})}</text></g>)}
-        {result.timeline.map((r,i)=>{const width=(chartWidth-64)/Math.max(1,result.timeline.length);const height=chartValue(r)/max*140;return <g key={r.key}><title>{r.key}: {costText(r)} / {number(r.total)} 토큰 / 캐시 적중률 {hit(r)}</title><rect x={64+i*width+6} y={175-height} width={Math.max(3,width-12)} height={Math.max(1,height)} rx="5" fill="#4284d6"/>{(result.timeline.length<=24||i%Math.ceil(result.timeline.length/24)===0)&&<text x={64+i*width+width/2} y="203" textAnchor="middle" fontSize="13">{r.key.slice(5)}</text>}</g>;})}
+        {result.timeline.map((r,i)=>{const width=(chartWidth-64)/Math.max(1,result.timeline.length);const height=chartValue(r)/max*140;return <g key={r.key}><title>{r.key}: {costText(r)} / {number(r.total)} 토큰 / 캐시 적중률 {hit(r)}</title><rect x={64+i*width+6} y={175-height} width={Math.max(3,width-12)} height={Math.max(1,height)} rx="5" fill="#4284d6"/>{i%labelEvery===0&&<text x={64+i*width+width/2} y="203" textAnchor="middle" fontSize="13">{r.key.slice(5)}</text>}</g>;})}
         {!result.timeline.length&&<text x="90" y="80">이 기간에는 사용 기록이 없습니다.</text>}
       </svg></div>
       <h3>모델별 사용 내역<Help label="모델별 수치">생각 깊이는 리즈닝 설정입니다. 주간 한도 5%p는 한도 100칸 중 5칸을 썼다는 뜻입니다. 관측된 한도 감소분을 토큰 양에 따라 나눈 추정치이며 관측하지 못한 구간은 빠집니다. 계정 하나를 선택해야 표시됩니다. 기간 중 초기화가 있었다면 합계가 100%p를 넘을 수 있습니다.</Help></h3>

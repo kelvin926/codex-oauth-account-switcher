@@ -26,7 +26,9 @@ app.whenReady().then(() => {
     assert.equal(startup.reconcile(false, false), true);
     let item = app.getLoginItemSettings(options).launchItems.find(item => item.name === name);
     assert.equal(item?.path.toLowerCase(), executable.toLowerCase());
-    assert.deepEqual(item?.args, ['--startup']);
+    const registered = execFileSync('reg.exe', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', name], { encoding: 'utf8', windowsHide: true });
+    assert.ok(registered.includes(`"${executable}" --startup`), 'Run must contain the full quoted executable and startup switch');
+    console.log(`Electron launchItems.args excludes switches: ${JSON.stringify(item?.args)}`);
     console.log('PASS: legacy false-negative registration repaired, spaced path quoted.');
 
     startup.set(false);
@@ -50,6 +52,7 @@ app.whenReady().then(() => {
     console.log('PASS: Task Manager disable respected, explicit re-enable succeeds.');
   } catch (error) {
     console.error(error);
+    console.error('Startup readback:', JSON.stringify(app.getLoginItemSettings(options)));
     code = 1;
   } finally {
     for (const key of [name, otherName]) app.setLoginItemSettings({ name: key, openAtLogin: false });

@@ -15,8 +15,7 @@ export class WindowsStartup {
       .find(item => item.name === this.name && item.scope === 'user');
   }
   enabled() {
-    const item = this.find();
-    return !!item?.enabled && item.args.length === 1 && item.args[0] === '--startup';
+    return !!this.find()?.enabled;
   }
   set(enabled: boolean) {
     this.api.setLoginItemSettings({ ...this.options, name: this.name, openAtLogin: enabled, enabled });
@@ -28,8 +27,10 @@ export class WindowsStartup {
   }
   reconcile(configured: boolean, preferred: boolean) {
     const current = this.find();
-    if (current && current.args.length === 1 && current.args[0] === '--startup') {
+    if (current) {
       // Reading an existing entry must not undo a Task Manager disable.
+      // Electron uses Chromium GetArgs(), which omits --startup (a switch).
+      // launchItems.args therefore cannot verify the registered command line.
       return current.enabled;
     }
     // v0.6.0 used an unquoted path and could save false after a false-negative
